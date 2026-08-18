@@ -90,3 +90,27 @@ def draw_text(text, font, color, x, y, center=True):
 
 def get_highlight(color):
     return (min(color[0] + 50, 255), min(color[1] + 50, 255), min(color[2] + 50, 255))
+
+def draw_button(screen, text, font, font_color, rect, base_color, is_hover, border_radius=15, outline_color=WHITE, outline_width=2):
+    # Shadow
+    shadow_rect = rect.copy()
+    shadow_rect.y += 4
+    pygame.draw.rect(screen, (10, 10, 15), shadow_rect, border_radius=border_radius)
+    
+    # Base or Hover Color
+    draw_color = get_highlight(base_color) if is_hover else base_color
+    pygame.draw.rect(screen, draw_color, rect, border_radius=border_radius)
+    
+    # Glowing Outline if Hover
+    if is_hover:
+        pygame.draw.rect(screen, outline_color, rect, width=outline_width, border_radius=border_radius)
+        
+    # Text
+    if text:
+        draw_text(text, font, font_color, rect.centerx, rect.centery)
+
+def draw_panel(screen, rect, alpha=200, bg_color=(20, 25, 35), border_color=CYAN, border_width=3, border_radius=20):
+    panel = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+    pygame.draw.rect(panel, (*bg_color, alpha), panel.get_rect(), border_radius=border_radius)
+    pygame.draw.rect(panel, border_color, panel.get_rect(), width=border_width, border_radius=border_radius)
+    screen.blit(panel, rect.topleft)

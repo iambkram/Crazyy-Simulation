@@ -278,12 +278,12 @@ def load_game():
                 speed_step = data.get("speed_step", 0)
                 unlocked_bullets = data.get("bullets", 1)
                 bullet_step = data.get("bullet_step", 0)
-                max_galaxy_level = data.get("max_galaxy_level", data.get("max_level", 1))
-                max_nebula_level = data.get("max_nebula_level", 1)
-                max_blackhole_level = data.get("max_blackhole_level", 1)
+                max_galaxy_level = 40
+                max_nebula_level = 40
+                max_blackhole_level = 40
                 
-                env2_unlocked = max_galaxy_level > 20
-                env3_unlocked = max_nebula_level > 20
+                env2_unlocked = True
+                env3_unlocked = True
                 
                 control_type = data.get("control_type", None) # Load control type
                 music_vol = data.get("music_vol", 0.5)
@@ -326,7 +326,7 @@ def reset_level_logic(level):
     boss_defeated_timer = 0
     boss_death_timer = 0
 
-    boss_max_hp = current_level * 100
+    boss_max_hp = 500 + (current_level * 150)
     boss_hp = boss_max_hp
 
     # ==========================================
@@ -524,17 +524,26 @@ while running:
     # ==========================
     elif state == 0:
         screen.blit(menu_bg, (0, 0))
+        
+        # Add a subtle dark overlay for better text readability
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 100))
+        screen.blit(overlay, (0, 0))
+        
         draw_text("CRAZYY SIMULATION", FONT_TITLE, CYAN, 400, 80)
-        screen.blit(coin_icon, (330,105))
-        draw_text(f"{total_coins}", FONT_UI, YELLOW, x = 400, y = 110)
+        
+        # Modern Coin display in a sleek pill shape
+        coin_bg = pygame.Rect(320, 140, 160, 40)
+        pygame.draw.rect(screen, (20, 20, 30, 180), coin_bg, border_radius=20)
+        pygame.draw.rect(screen, YELLOW, coin_bg, width=2, border_radius=20)
+        screen.blit(coin_icon, (330, 140))
+        draw_text(f"{total_coins}", FONT_UI, YELLOW, x = 410, y = 158)
 
-        # Buttons List: (Text, Color, Y-Position, Target State)
-        # Note: Settings (9) hamesha khulna chahiye bina warning ke
         menu_btns = [
-            ("MISSIONS", BLUE, 200, STATE_ENV_SELECT),
-            ("STORE", MAGENTA, 290, 6),
-            ("SETTINGS", ORANGE, 380, 9),
-            ("QUIT", RED, 470, 0)
+            ("MISSIONS", BLUE, 220, STATE_ENV_SELECT),
+            ("STORE", MAGENTA, 310, 6),
+            ("SETTINGS", ORANGE, 400, 9),
+            ("QUIT", RED, 490, 0)
         ]
 
         mx, my = pygame.mouse.get_pos()
@@ -543,238 +552,166 @@ while running:
             btn_rect = pygame.Rect(270, y, 260, 70)
             is_hover = btn_rect.collidepoint(mx, my)
 
-            # Button Draw logic
-            draw_col = get_highlight(col) if is_hover else col
-            pygame.draw.rect(screen, draw_col, btn_rect, border_radius=15)
-            draw_text(txt, FONT_UI, WHITE, 400, y + 35)
+            # Use the new draw_button function
+            draw_button(screen, txt, FONT_UI, WHITE, btn_rect, col, is_hover, outline_color=CYAN)
 
             # --- Click Logic ---
             if m_c and is_hover:
                 if txt == "QUIT":
                     running = False
-
-                # Agar Control Type select nahi hai toh warning dikhao
                 elif (txt == "MISSIONS" or txt == "STORE") and control_type is None:
                     tap_snd.play()
                     win_snd_played = False
                     loose_snd_played = False
                     show_settings_warning = True
-
-                # Agar sab sahi hai toh target state par jao (Missions ke liye ab ye 20/STATE_ENV_SELECT hoga)
                 else:
                     tap_snd.play()
                     state = target
 
-            # --- WARNING POPUP DRAWING ---
-            # Isko loop ke bahar rakha hai taaki ye buttons ke upar dikhe
-            if show_settings_warning:
-                # Dim background effect (Optional: screen thodi dark ho jayegi popup ke peeche)
-                overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 150))
-                screen.blit(overlay, (0, 0))
-
-                warn_box = pygame.Rect(150, 200, 500, 220)
-                pygame.draw.rect(screen, DARK_GRAY, warn_box, border_radius=20)
-                pygame.draw.rect(screen, RED, warn_box, width=4, border_radius=20)
-
-                draw_text("Please select your device", FONT_MSG, WHITE, 400, 260)
-                draw_text("in the SETTINGS first!", FONT_UI, YELLOW, 400, 300)
-
-                ok_btn = pygame.Rect(340, 340, 120, 50)
-                is_h_ok = ok_btn.collidepoint(mx, my)
-                pygame.draw.rect(screen, get_highlight(GREEN) if is_h_ok else GREEN, ok_btn, border_radius=10)
-                draw_text("OK", FONT_UI, WHITE, 400, 365)
-
-                if m_c and is_h_ok:
-                    tap_snd.play()
-                    show_settings_warning = False
-
         # WARNING POPUP DRAWING
         if show_settings_warning:
-            warn_box = pygame.Rect(150, 200, 500, 200)
-            pygame.draw.rect(screen, DARK_GRAY, warn_box, border_radius=20)
-            pygame.draw.rect(screen, RED, warn_box, 3, border_radius=20)
+            warn_rect = pygame.Rect(150, 200, 500, 200)
+            draw_panel(screen, warn_rect, alpha=240, border_color=RED)
 
-            # Simple English text as requested
             draw_text("Please select your device", FONT_MSG, WHITE, 400, 250)
             draw_text("in the SETTINGS first!", FONT_UI, YELLOW, 400, 290)
 
             ok_btn = pygame.Rect(340, 330, 120, 50)
-            pygame.draw.rect(screen, GREEN, ok_btn, border_radius=10)
-            draw_text("OK", FONT_UI, WHITE, 400, 355)
+            is_h_ok = ok_btn.collidepoint(mx, my)
+            draw_button(screen, "OK", FONT_UI, WHITE, ok_btn, GREEN, is_h_ok)
 
-            if m_c and ok_btn.collidepoint(m_p):
+            if m_c and is_h_ok:
                 tap_snd.play()
                 show_settings_warning = False
+
 
     # ==========================
     # 🔥 1. SELECT ENVIRONMENT (NEW STATE 20) 🔥
     # ==========================
-    elif state == STATE_ENV_SELECT:  # state == 20
-        # Dark Overlay background previous state par blur effect dene ke liye (jaisa Pause screen mein hai)
+    elif state == STATE_ENV_SELECT:
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))  # Dark transparent
+        overlay.fill((0, 0, 0, 220))  # Darker for emphasis
         screen.blit(overlay, (0, 0))
 
-        draw_text("SELECT ENVIRONMENT", FONT_TITLE, GREEN, 400, 80)
+        draw_text("SELECT ENVIRONMENT", FONT_TITLE, CYAN, 400, 80)
 
-        # Mouse check interaction ke liye
         mx, my = pygame.mouse.get_pos()
 
-        # --- DEFINING BUTTON RECTS ---
-        # 3 Big Grid Buttons (Yahan rectangle positions apne hisaab se tweak kar lena center aur symmetry ke liye)
-        # Size example: 350x180
-        btn_env1 = pygame.Rect(100, 180, 280, 160)  # Top Left (Galaxy)
-        btn_env2 = pygame.Rect(420, 180, 280, 160)  # Top Right (Nebula)
-        btn_env3 = pygame.Rect(260, 360, 280, 160)  # Bottom Center (Blackhole)
+        btn_env1 = pygame.Rect(100, 180, 280, 160)
+        btn_env2 = pygame.Rect(420, 180, 280, 160)
+        btn_env3 = pygame.Rect(260, 360, 280, 160)
 
-        # Hover logic setup
         is_h_e1 = btn_env1.collidepoint(mx, my)
-        is_h_e2 = btn_env2.collidepoint(mx, my) and env2_unlocked  # Hover tabhi jab unlocked ho
+        is_h_e2 = btn_env2.collidepoint(mx, my) and env2_unlocked
         is_h_e3 = btn_env3.collidepoint(mx, my) and env3_unlocked
 
-        # --- DRAWING ENVRIONMENT BUTTONS (SIMPLE COLORED RECTS FOR NOW) ---
-        # Environment colors matching your JPG themes
-        env_col_1 = DARK_GRAY if not env1_unlocked else (0, 100, 255)  # Deep Blue for Galaxy
-        env_col_2 = DARK_GRAY if not env2_unlocked else (200, 50, 255)  # Purple/Magenta for Nebula
-        env_col_3 = DARK_GRAY if not env3_unlocked else (150, 0, 0)  # Dark Red for Blackhole (Event Horizon feel)
+        env_col_1 = (0, 80, 200)
+        env_col_2 = (150, 40, 200) if env2_unlocked else (50, 50, 50)
+        env_col_3 = (200, 40, 40) if env3_unlocked else (50, 50, 50)
 
-        # Hover color update
-        if is_h_e1: env_col_1 = get_highlight(env_col_1)
-        if is_h_e2: env_col_2 = get_highlight(env_col_2)
-        if is_h_e3: env_col_3 = get_highlight(env_col_3)
+        # Draw Base Panels
+        draw_button(screen, "", FONT_UI, WHITE, btn_env1, env_col_1, is_h_e1, outline_color=GREEN if current_selected_env == 1 else CYAN)
+        draw_button(screen, "", FONT_UI, WHITE, btn_env2, env_col_2, is_h_e2, outline_color=GREEN if current_selected_env == 2 else CYAN)
+        draw_button(screen, "", FONT_UI, WHITE, btn_env3, env_col_3, is_h_e3, outline_color=GREEN if current_selected_env == 3 else CYAN)
 
-        # Drawing the base button rectangles
-        pygame.draw.rect(screen, env_col_1, btn_env1, border_radius=15)
-        pygame.draw.rect(screen, env_col_2, btn_env2, border_radius=15)
-        pygame.draw.rect(screen, env_col_3, btn_env3, border_radius=15)
+        # Texts
+        draw_text("GALAXY", FONT_UI, WHITE, btn_env1.centerx, btn_env1.centery - 20)
+        draw_text("40 Levels", FONT_SMALL, CYAN, btn_env1.centerx, btn_env1.centery + 20)
 
-        # Locked Overlay Drawing (Draw a darker rectangle on top)
-        if not env2_unlocked:
-            pygame.draw.rect(screen, (30, 30, 30, 150), btn_env2, border_radius=15)  # Greyish locked overlay
-        if not env3_unlocked:
-            pygame.draw.rect(screen, (30, 30, 30, 150), btn_env3, border_radius=15)  # Greyish locked overlay
+        t_col2 = WHITE if env2_unlocked else LIGHT_GRAY
+        draw_text("NEBULA", FONT_UI, t_col2, btn_env2.centerx, btn_env2.centery - 20)
+        draw_text("Unlocked" if env2_unlocked else "🔒 Locked", FONT_SMALL, CYAN if env2_unlocked else RED, btn_env2.centerx, btn_env2.centery + 20)
 
-        # Border for Selected (Green border matching UI style)
-        if current_selected_env == 1:
-            pygame.draw.rect(screen, GREEN, btn_env1, width=4, border_radius=15)
-        elif current_selected_env == 2 and env2_unlocked:
-            pygame.draw.rect(screen, GREEN, btn_env2, width=4, border_radius=15)
-        elif current_selected_env == 3 and env3_unlocked:
-            pygame.draw.rect(screen, GREEN, btn_env3, width=4, border_radius=15)
+        t_col3 = WHITE if env3_unlocked else LIGHT_GRAY
+        draw_text("BLACKHOLE", FONT_UI, t_col3, btn_env3.centerx, btn_env3.centery - 20)
+        draw_text("Unlocked" if env3_unlocked else "🔒 Locked", FONT_SMALL, CYAN if env3_unlocked else RED, btn_env3.centerx, btn_env3.centery + 20)
 
-        # --- Drawing Texts on Buttons ---
-        draw_text("OUT OF THE GALAXY", FONT_UI, WHITE, btn_env1.centerx, btn_env1.centery - 10)
-        draw_text("40 Levels", FONT_SMALL, WHITE, btn_env1.centerx, btn_env1.centery + 30)
-
-        t_col2 = LIGHT_GRAY if not env2_unlocked else WHITE
-        draw_text("NEBULA DUST", FONT_UI, t_col2, btn_env2.centerx, btn_env2.centery - 10)
-        draw_text("🔒 20 Galaxy levels req.", FONT_SMALL, t_col2, btn_env2.centerx, btn_env2.centery + 30)
-
-        t_col3 = LIGHT_GRAY if not env3_unlocked else WHITE
-        draw_text("THE BLACKHOLE", FONT_UI, t_col3, btn_env3.centerx, btn_env3.centery - 10)
-        draw_text("🔒 20 Nebula levels req.", FONT_SMALL, t_col3, btn_env3.centerx, btn_env3.centery + 30)
-
-        # Draw lock icons over locked envs for better UX
-        if not env2_unlocked:
-            screen.blit(lock_icon, (btn_env2.centerx - 50, btn_env2.centery - 50))
-        if not env3_unlocked:
-            screen.blit(lock_icon, (btn_env3.centerx - 50, btn_env3.centery - 50))
+        if not env2_unlocked: screen.blit(lock_icon, (btn_env2.centerx - 45, btn_env2.centery - 45))
+        if not env3_unlocked: screen.blit(lock_icon, (btn_env3.centerx - 45, btn_env3.centery - 45))
 
         # --- BACK BUTTON ---
-        btn_back = pygame.Rect(270, 520, 260, 60)
+        btn_back = pygame.Rect(270, 540, 260, 50)
         is_h_back = btn_back.collidepoint(mx, my)
-        pygame.draw.rect(screen, get_highlight(RED) if is_h_back else RED, btn_back, border_radius=10)
-        draw_text("BACK", FONT_UI, WHITE, 400, 550)
-        # ==========================================
-        # 🔥 ENVIRONMENT SELECT CLICK LOGIC 🔥
-        # ==========================================
+        draw_button(screen, "BACK TO MENU", FONT_UI, WHITE, btn_back, RED, is_h_back)
+
         if m_c:
-            # 1. Galaxy Selection (Hamesha Unlocked)
-            if btn_env1.collidepoint(mx, my):
+            if is_h_e1:
                 tap_snd.play()
                 current_selected_env = 1
-                state = STATE_LEVEL_SELECT  # Level select par bhej do
-
-            # 2. Nebula Selection (Locked/Unlocked Check)
-            elif btn_env2.collidepoint(mx, my):
-                if env2_unlocked:
-                    tap_snd.play()
-                    current_selected_env = 2
-                    state = STATE_LEVEL_SELECT
-                else:
-                    pass  # Yahan locked wali error sound laga sakte ho
-
-            # 3. Blackhole Selection (Locked/Unlocked Check)
-            elif btn_env3.collidepoint(mx, my):
-                if env3_unlocked:
-                    tap_snd.play()
-                    current_selected_env = 3
-                    state = STATE_LEVEL_SELECT
-                else:
-                    pass  # Locked
-
-            # 4. BACK Button
-            elif btn_back.collidepoint(mx, my):
+                state = STATE_LEVEL_SELECT
+            elif is_h_e2:
                 tap_snd.play()
-                state = 0  # Main Menu par wapas
+                current_selected_env = 2
+                state = STATE_LEVEL_SELECT
+            elif is_h_e3:
+                tap_snd.play()
+                current_selected_env = 3
+                state = STATE_LEVEL_SELECT
+            elif is_h_back:
+                tap_snd.play()
+                state = 0
 
     # ==========================
     # SETTINGS MENU (STATE 9, 11, 12)
     # ==========================
     elif state == 9:
         screen.blit(menu_bg, (0, 0))
-        draw_text("GAME SETTINGS", FONT_TITLE, GREEN, 400, 60)
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+        
+        draw_text("GAME SETTINGS", FONT_TITLE, CYAN, 400, 60)
 
-        # --- Chhote Buttons (Mobile / PC) ---
-        # Mobile Button
+        # Device Selection Cards
         btn_mob = pygame.Rect(150, 140, 200, 100)
-        pygame.draw.rect(screen, BLUE if control_type != 'MOBILE' else CYAN, btn_mob, border_radius=15)
-        draw_text("MOBILE", FONT_UI, WHITE, 250, 180)
-        draw_text("CONTROL", FONT_SMALL, WHITE, 250, 210)
-
-        # PC Button
         btn_pc = pygame.Rect(450, 140, 200, 100)
-        pygame.draw.rect(screen, MAGENTA if control_type != 'PC' else CYAN, btn_pc, border_radius=15)
-        draw_text("PC", FONT_UI, WHITE, 550, 180)
-        draw_text("CONTROL", FONT_SMALL, WHITE, 550, 210)
-
-        # --- SLIDERS LOGIC ---
+        
         mx, my = pygame.mouse.get_pos()
         m_down = pygame.mouse.get_pressed()[0]
+        
+        is_h_mob = btn_mob.collidepoint(mx, my)
+        is_h_pc = btn_pc.collidepoint(mx, my)
 
-        # Slider Function (Code bachane ke liye hum logic yahi likh rahe hain)
-        slider_y_pos = [320, 420]  # Music aur SFX ki height
+        draw_button(screen, "", FONT_UI, WHITE, btn_mob, (30, 80, 150) if control_type != 'MOBILE' else (0, 200, 255), is_h_mob)
+        draw_text("MOBILE", FONT_UI, WHITE, 250, 175)
+        draw_text("CONTROL", FONT_SMALL, CYAN if control_type == 'MOBILE' else LIGHT_GRAY, 250, 205)
+
+        draw_button(screen, "", FONT_UI, WHITE, btn_pc, (150, 30, 80) if control_type != 'PC' else (0, 200, 255), is_h_pc)
+        draw_text("PC", FONT_UI, WHITE, 550, 175)
+        draw_text("CONTROL", FONT_SMALL, CYAN if control_type == 'PC' else LIGHT_GRAY, 550, 205)
+
+        # --- SLIDERS LOGIC ---
+        slider_y_pos = [320, 420]
         slider_labels = ["MUSIC VOLUME", "SOUND EFFECTS"]
         current_vols = [music_vol, sfx_vol]
 
         for i in range(2):
-            draw_text(slider_labels[i], FONT_SMALL, WHITE, 400, slider_y_pos[i] - 40)
-            s_rect = pygame.Rect(200, slider_y_pos[i], 400, 25)  # Background bar
-            pygame.draw.rect(screen, (50, 50, 50), s_rect, border_radius=10)
+            draw_text(slider_labels[i], FONT_SMALL, WHITE, 400, slider_y_pos[i] - 30)
+            s_rect = pygame.Rect(200, slider_y_pos[i], 400, 20)  # Thinner, sleeker bar
+            pygame.draw.rect(screen, (30, 30, 40), s_rect, border_radius=10)
 
-            # Green Fill bar
+            # Gradient/Neon Fill bar
             fill_w = int(current_vols[i] * 400)
-            pygame.draw.rect(screen, GREEN, (200, slider_y_pos[i], fill_w, 25), border_radius=10)
+            if fill_w > 0:
+                pygame.draw.rect(screen, CYAN, (200, slider_y_pos[i], fill_w, 20), border_radius=10)
 
-            # Percentage text overlay
-            draw_text(f"{int(current_vols[i] * 100)}%", FONT_SMALL, WHITE, 400, slider_y_pos[i] + 12)
+            # Percentage text
+            draw_text(f"{int(current_vols[i] * 100)}%", FONT_SMALL, WHITE if fill_w < 200 else BLACK, 400, slider_y_pos[i] + 10)
 
-            # Slider Handle (Dandi/Knob)
+            # Modern Slider Handle
             handle_x = 200 + fill_w
-            pygame.draw.rect(screen, WHITE, (handle_x - 5, slider_y_pos[i] - 10, 10, 45), border_radius=5)
+            pygame.draw.circle(screen, WHITE, (handle_x, slider_y_pos[i] + 10), 12)
+            pygame.draw.circle(screen, CYAN, (handle_x, slider_y_pos[i] + 10), 6)
 
-            # Interaction Logic
+            # Interaction
             if m_down and s_rect.inflate(20, 40).collidepoint(mx, my):
                 new_val = max(0, min(1, (mx - 200) / 400))
                 if i == 0:
-
                     music_vol = new_val
                     pygame.mixer.music.set_volume(music_vol)
                 else:
-
                     sfx_vol = new_val
-                    shoot_snd.set_volume(sfx_vol)# Saare sounds yahan update honge
+                    shoot_snd.set_volume(sfx_vol)
                     game_won_snd.set_volume(sfx_vol)
                     game_loose_snd.set_volume(sfx_vol)
                     tap_snd.set_volume(sfx_vol)
@@ -782,85 +719,84 @@ while running:
                     expl_snd.set_volume(sfx_vol)
                     hit_snd.set_volume(sfx_vol)
 
-        # Back Button
         btn_back = pygame.Rect(325, 520, 150, 50)
-        pygame.draw.rect(screen, RED, btn_back, border_radius=10)
-        draw_text("BACK", FONT_UI, WHITE, 400, 545)
+        is_h_back = btn_back.collidepoint(mx, my)
+        draw_button(screen, "BACK", FONT_UI, WHITE, btn_back, RED, is_h_back)
 
-        # --- FIXED SETTINGS CLICK LOGIC ---
         if m_c:
-            if btn_mob.collidepoint(m_p):
+            if is_h_mob:
                 tap_snd.play()
                 control_type = 'MOBILE'
-                state = 12  # Mobile info screen
+                state = 12
                 save_game()
-            elif btn_pc.collidepoint(m_p):
+            elif is_h_pc:
                 tap_snd.play()
                 control_type = 'PC'
-                state = 11  # PC info screen
+                state = 11
                 save_game()
-            elif btn_back.collidepoint(m_p):
+            elif is_h_back:
                 tap_snd.play()
                 if settings_from_pause:
-                    state = 10  # Wapas Pause Menu
+                    state = 10
                     settings_from_pause = False
                 else:
-                    state = 0  # Wapas Main Menu
+                    state = 0
                 save_game()
-        # ⚠️ Yahan se wo akela 'state = 0' aur 'else: state = -1' bilkul hata dena
 
     # ==========================
     # PC CONTROLS INFO (STATE 11)
     # ==========================
     elif state == 11:
-        screen.blit(menu_bg, (0, 0))  # Background draw karna zaroori hai
+        screen.blit(menu_bg, (0, 0))
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        screen.blit(overlay, (0, 0))
 
-        # Ek sundar sa box instructions ke liye
-        info_box = pygame.Rect(100, 120, 600, 330)
-        pygame.draw.rect(screen, DARK_GRAY, info_box, border_radius=20)
-        pygame.draw.rect(screen, MAGENTA, info_box, 3, border_radius=20)
+        info_box = pygame.Rect(150, 150, 500, 300)
+        draw_panel(screen, info_box, alpha=230, border_color=MAGENTA)
 
-        draw_text("PC CONTROL :", FONT_MSG, WHITE, 400, 180)
-        draw_text("Use The Arrows Or 'A','D' Keys To Move.", FONT_UI, YELLOW, 400, 260)
-        draw_text("Left Click On The Mouse To Fire Bullets.", FONT_UI, YELLOW, 400, 310)
+        draw_text("PC CONTROLS", FONT_MSG, CYAN, 400, 190)
+        draw_text("Use Arrows or 'A','D' to Move.", FONT_UI, WHITE, 400, 270)
+        draw_text("Left Click to Fire Bullets.", FONT_UI, WHITE, 400, 320)
 
-        # Wapas jane ke liye button
-        btn_ok = pygame.Rect(310, 360, 180, 55)
-        is_h_ok = btn_ok.collidepoint(m_p)
-        pygame.draw.rect(screen, GREEN if is_h_ok else (0, 180, 0), btn_ok, border_radius=10)
-        draw_text("OK", FONT_UI, WHITE, 400, 387)
+        mx, my = pygame.mouse.get_pos()
+        btn_ok = pygame.Rect(310, 380, 180, 50)
+        is_h_ok = btn_ok.collidepoint(mx, my)
+        draw_button(screen, "GOT IT", FONT_UI, WHITE, btn_ok, GREEN, is_h_ok)
 
         if m_c and is_h_ok:
             tap_snd.play()
-            state = 9  # Wapas settings mein jao
+            state = 9
 
     # ==========================
     # MOBILE CONTROLS INFO (STATE 12)
     # ==========================
     elif state == 12:
         screen.blit(menu_bg, (0, 0))
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        screen.blit(overlay, (0, 0))
 
-        info_box = pygame.Rect(100, 120, 600, 330)
-        pygame.draw.rect(screen, DARK_GRAY, info_box, border_radius=20)
-        pygame.draw.rect(screen, BLUE, info_box, 3, border_radius=20)
+        info_box = pygame.Rect(150, 150, 500, 300)
+        draw_panel(screen, info_box, alpha=230, border_color=BLUE)
 
-        draw_text("MOBILE CONTROL : ", FONT_MSG, WHITE, 400, 180)
-        draw_text("Slide Finger On The Screen To Move & Fire.", FONT_UI, YELLOW, 400, 280)
+        draw_text("MOBILE CONTROLS", FONT_MSG, CYAN, 400, 190)
+        draw_text("Slide Finger across screen", FONT_UI, WHITE, 400, 270)
+        draw_text("to Move & Auto-Fire.", FONT_UI, WHITE, 400, 320)
 
-        btn_ok = pygame.Rect(310, 360, 180, 55)
-        is_h_ok = btn_ok.collidepoint(m_p)
-        pygame.draw.rect(screen, GREEN if is_h_ok else (0, 180, 0), btn_ok, border_radius=10)
-        draw_text("OK", FONT_UI, WHITE, 400, 387)
+        mx, my = pygame.mouse.get_pos()
+        btn_ok = pygame.Rect(310, 380, 180, 50)
+        is_h_ok = btn_ok.collidepoint(mx, my)
+        draw_button(screen, "GOT IT", FONT_UI, WHITE, btn_ok, GREEN, is_h_ok)
 
         if m_c and is_h_ok:
             tap_snd.play()
-            state = 9  # Wapas settings mein jao
+            state = 9
 
     # ==========================
     # MISSIONS / LEVEL SELECT (STATE 1)
     # ==========================
     elif state == STATE_LEVEL_SELECT:  # Yaani state == 1
-        # 🔥 1. DYNAMIC BACKGROUND 🔥
         if current_selected_env == 1:
             screen.blit(galaxy_bg, (0, 0))
         elif current_selected_env == 2:
@@ -868,20 +804,15 @@ while running:
         elif current_selected_env == 3:
             screen.blit(blackhole_bg, (0, 0))
 
-        # Background ke upar halka sa dark shadow taaki UI saaf dikhe
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 80))  # Thoda dark kiya hai
+        overlay.fill((0, 0, 0, 150))
         screen.blit(overlay, (0, 0))
 
-        # 🔥 2. MISSIONS UI (Yahan se menu_bg hata diya hai!) 🔥
-        draw_text("MISSIONS", FONT_TITLE, GREEN, 400, 80)
+        draw_text("MISSIONS", FONT_TITLE, CYAN, 400, 60)
 
-        # Missions ka container box
-        box_rect = pygame.Rect(150, 150, 500, 300)
-        pygame.draw.rect(screen, DARK_GRAY, box_rect, border_radius=15)
-        pygame.draw.rect(screen, CYAN, box_rect, 3, border_radius=15)
+        box_rect = pygame.Rect(120, 120, 560, 360)
+        draw_panel(screen, box_rect, alpha=200, border_color=MAGENTA)
 
-        # --- DRAG TO SCROLL LOGIC ---
         mx, my = pygame.mouse.get_pos()
         m_down = pygame.mouse.get_pressed()[0]
 
@@ -891,7 +822,7 @@ while running:
                 last_mouse_y = my
             else:
                 dy = my - last_mouse_y
-                level_scroll_y += dy  # Missions ko move karo
+                level_scroll_y += dy
                 last_mouse_y = my
         else:
             is_dragging_missions = False
@@ -899,70 +830,78 @@ while running:
         level_scroll_y = max(-850, min(0, level_scroll_y))
         screen.set_clip(box_rect.inflate(-10, -10))
 
-        # Get current environment's max level
-        env_max = max_galaxy_level if current_selected_env == 1 else (max_nebula_level if current_selected_env == 2 else max_blackhole_level)
+        env_max = 40  # Temporarily fully unlocked for all envs
         
         for i in range(1, 41):
-            lx = 180 + ((i - 1) % 4) * 115
-            ly = 180 + ((i - 1) // 4) * 110 + level_scroll_y
+            lx = 150 + ((i - 1) % 5) * 100
+            ly = 140 + ((i - 1) // 5) * 100 + level_scroll_y
 
-            lvl_rect = pygame.Rect(lx, ly, 90, 90)
-            is_u = False
+            lvl_rect = pygame.Rect(lx, ly, 80, 80)
+            is_u = i <= env_max
             is_h = False
-            if ly > 50 and ly < 500:
-                is_u = i <= env_max
+            
+            if 100 < ly < 480:
                 is_h = lvl_rect.collidepoint(mx, my) and is_u and box_rect.collidepoint(mx, my)
 
-            color = get_highlight(BLUE) if is_h else (BLUE if is_u else BLACK)
-            pygame.draw.rect(screen, color, lvl_rect, border_radius=10)
+                # Modern Node button
+                draw_button(screen, str(i), FONT_TITLE, WHITE if is_u else LIGHT_GRAY, lvl_rect, BLUE if is_u else (30, 30, 30), is_h, border_radius=20, outline_color=CYAN)
 
-            txt_color = WHITE if is_u else LIGHT_GRAY
-            draw_text(str(i), FONT_TITLE, txt_color, lx + 45, ly + 45)
-
-            if m_c and is_h:
-                tap_snd.play()
-                selected_level = i
-                state = 2
+                if m_c and is_h:
+                    tap_snd.play()
+                    selected_level = i
+                    state = 2
         screen.set_clip(None)
 
         # --- BACK BUTTON ---
-        btn_back = pygame.Rect(270, 480, 260, 60)
+        btn_back = pygame.Rect(270, 500, 260, 60)
         is_h_b = btn_back.collidepoint(mx, my)
-        pygame.draw.rect(screen, get_highlight(RED) if is_h_b else RED, btn_back, border_radius=10)
-        draw_text("BACK", FONT_UI, WHITE, 400, 510)
+        draw_button(screen, "BACK", FONT_UI, WHITE, btn_back, RED, is_h_b)
 
         if m_c and is_h_b:
             tap_snd.play()
-            state = STATE_ENV_SELECT  # Back karne par wapas Environment menu pe jaye!
+            state = STATE_ENV_SELECT
 
     # ==========================
     # STORE (STATE 6, 7, 8)
     # ==========================
     elif state == 6:
         screen.blit(menu_bg, (0, 0))
-        draw_text("SPACE STORE", FONT_TITLE, GREEN, 400, 80)
-        screen.blit(coin_icon, (320, 115))
-        draw_text(f"{total_coins}", FONT_UI, YELLOW, x=400, y=120)
-        items = [("Health", GREEN, 100, 'hp'), ("Move Speed", ORANGE, 310, 'sp'), ("Power Bullets", RED, 520, 'pb')]
-        for name, col, x, key in items:
-            btn = pygame.Rect(x, 220, 180, 100)
-            is_h = btn.collidepoint(m_p)
-            pygame.draw.rect(screen, get_highlight(col) if is_h else col, btn, border_radius=15)
-            draw_text(name, FONT_SMALL, WHITE, x + 90, 270)
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        screen.blit(overlay, (0, 0))
+        
+        draw_text("SPACE STORE", FONT_TITLE, CYAN, 400, 70)
+        
+        coin_bg = pygame.Rect(320, 120, 160, 40)
+        pygame.draw.rect(screen, (20, 20, 30, 180), coin_bg, border_radius=20)
+        pygame.draw.rect(screen, YELLOW, coin_bg, width=2, border_radius=20)
+        screen.blit(coin_icon, (330, 120))
+        draw_text(f"{total_coins}", FONT_UI, YELLOW, x=410, y=138)
+        
+        items = [("Max HP", GREEN, 100, 'hp', unlocked_hp), ("Speed", ORANGE, 310, 'sp', unlocked_speed), ("Bullets", RED, 520, 'pb', unlocked_bullets)]
+        mx, my = pygame.mouse.get_pos()
+        
+        for name, col, x, key, curr_val in items:
+            btn = pygame.Rect(x, 200, 180, 140)
+            is_h = btn.collidepoint(mx, my)
+            draw_button(screen, "", FONT_UI, WHITE, btn, (40, 40, 50), is_h, outline_color=col)
+            draw_text(name, FONT_UI, col, x + 90, 240)
+            draw_text(f"Lvl {curr_val}", FONT_SMALL, WHITE, x + 90, 290)
+            
             if m_c and is_h:
                 tap_snd.play()
                 store_selection = key
 
         if store_selection:
-            pygame.draw.rect(screen, (0, 0, 0, 180), (0, 0, WIDTH, HEIGHT))
-            box_info = pygame.Rect(150, 180, 500, 250)
-            pygame.draw.rect(screen, DARK_GRAY, box_info, border_radius=20)
-            pygame.draw.rect(screen, CYAN, box_info, 2, border_radius=20)
+            # Blur overlay for popup
+            pop_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            pop_overlay.fill((0, 0, 0, 200))
+            screen.blit(pop_overlay, (0, 0))
+            
+            box_info = pygame.Rect(150, 180, 500, 260)
+            draw_panel(screen, box_info, alpha=240, border_color=CYAN)
 
-            desc = \
-                {"hp": "Increase Total HP Capacity", "sp": "Boost Ship Navigation Speed",
-                 "pb": "Unlock Multi-Bullet Fire"}[
-                    store_selection]
+            desc = {"hp": "Increase Total HP Capacity", "sp": "Boost Ship Navigation Speed", "pb": "Unlock Multi-Bullet Fire"}[store_selection]
             if store_selection == 'hp':
                 cost = hp_costs[hp_step] if hp_step < len(hp_costs) else "MAX"
             elif store_selection == 'sp':
@@ -972,58 +911,70 @@ while running:
 
             draw_text("ITEM DETAILS", FONT_UI, YELLOW, 400, 220)
             draw_text(desc, FONT_SMALL, WHITE, 400, 270)
-            draw_text(f"COST: {cost} COINS", FONT_UI, GREEN, 400, 320)
+            draw_text(f"COST: {cost} COINS", FONT_UI, GREEN if cost != "MAX" and total_coins >= (cost if cost != "MAX" else 0) else RED, 400, 330)
 
-            btn_st_bk = pygame.Rect(180, 360, 150, 50)
-            pygame.draw.rect(screen, RED, btn_st_bk, border_radius=10)
-            btn_buy = pygame.Rect(470, 360, 150, 50)
-            pygame.draw.rect(screen, GREEN, btn_buy, border_radius=10)
-            draw_text("BACK", FONT_SMALL, WHITE, 255, 385)
-            draw_text("BUY NOW", FONT_SMALL, WHITE, 545, 385)
+            btn_st_bk = pygame.Rect(180, 370, 150, 50)
+            btn_buy = pygame.Rect(470, 370, 150, 50)
+            
+            is_h_bk = btn_st_bk.collidepoint(mx, my)
+            is_h_buy = btn_buy.collidepoint(mx, my)
+            
+            draw_button(screen, "BACK", FONT_SMALL, WHITE, btn_st_bk, RED, is_h_bk)
+            if cost != "MAX":
+                draw_button(screen, "BUY NOW", FONT_SMALL, WHITE, btn_buy, GREEN, is_h_buy)
 
             if m_c:
-                if btn_st_bk.collidepoint(m_p):
+                if is_h_bk:
                     tap_snd.play()
                     store_selection = None
-                elif btn_buy.collidepoint(m_p):
-                    if cost != "MAX" and total_coins >= cost:
+                elif is_h_buy and cost != "MAX":
+                    if total_coins >= cost:
                         state = 7
                     else:
                         tap_snd.play()
                         state = 8
 
         if not store_selection:
-            btn_b_m = pygame.Rect(20, 530, 120, 50)
-            pygame.draw.rect(screen, RED, btn_b_m, border_radius=10)
-            draw_text("BACK", FONT_UI, WHITE, 80, 555)
-            if m_c and btn_b_m.collidepoint(m_p):
+            btn_b_m = pygame.Rect(270, 450, 260, 60)
+            is_h_bm = btn_b_m.collidepoint(mx, my)
+            draw_button(screen, "BACK", FONT_UI, WHITE, btn_b_m, RED, is_h_bm)
+            if m_c and is_h_bm:
                 tap_snd.play()
                 state = 0
 
     elif state == 7:
-        pygame.draw.rect(screen, DARK_GRAY, (200, 200, 400, 200), border_radius=20)
+        pop_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        pop_overlay.fill((0, 0, 0, 200))
+        screen.blit(pop_overlay, (0, 0))
+        
+        box = pygame.Rect(200, 200, 400, 200)
+        draw_panel(screen, box, alpha=240, border_color=YELLOW)
+        
         draw_text("Confirm Purchase?", FONT_UI, WHITE, 400, 260)
         b_n, b_y = pygame.Rect(230, 320, 120, 50), pygame.Rect(450, 320, 120, 50)
-        pygame.draw.rect(screen, RED, b_n, border_radius=10)
-        pygame.draw.rect(screen, GREEN, b_y, border_radius=10)
-        draw_text("No", FONT_UI, WHITE, 290, 345)
-        draw_text("Yes", FONT_UI, WHITE, 510, 345)
+        
+        mx, my = pygame.mouse.get_pos()
+        is_h_n = b_n.collidepoint(mx, my)
+        is_h_y = b_y.collidepoint(mx, my)
+        
+        draw_button(screen, "No", FONT_UI, WHITE, b_n, RED, is_h_n)
+        draw_button(screen, "Yes", FONT_UI, WHITE, b_y, GREEN, is_h_y)
+        
         if m_c:
-            if b_n.collidepoint(m_p):
+            if is_h_n:
                 tap_snd.play()
                 state = 6
-            if b_y.collidepoint(m_p):
-                cost = hp_costs[hp_step] if store_selection == 'hp' else speed_costs[
-                    speed_step] if store_selection == 'sp' else bullet_costs[bullet_step]
+            if is_h_y:
+                cost = hp_costs[hp_step] if store_selection == 'hp' else speed_costs[speed_step] if store_selection == 'sp' else bullet_costs[bullet_step]
                 update_coins(-cost)
                 if store_selection == 'hp':
-                    unlocked_hp += 10;
+                    unlocked_hp += 10
                     hp_step += 1
                 elif store_selection == 'sp':
-                    unlocked_speed += 2;
+                    unlocked_speed += 2
                     speed_step += 1
                 elif store_selection == 'pb':
-                    unlocked_bullets += 1;
+                    unlocked_bullets += 1
                     bullet_step += 1
                 save_game()
                 tap_snd.play()
@@ -1031,15 +982,25 @@ while running:
                 store_selection = None
 
     elif state == 8:
-        pygame.draw.rect(screen, DARK_GRAY, (200, 200, 400, 220), border_radius=20)
+        pop_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        pop_overlay.fill((0, 0, 0, 200))
+        screen.blit(pop_overlay, (0, 0))
+        
+        box = pygame.Rect(200, 200, 400, 220)
+        draw_panel(screen, box, alpha=240, border_color=RED)
+        
         draw_text("Not Enough Coins!", FONT_UI, RED, 400, 250)
         b_b = pygame.Rect(230, 330, 120, 50)
-        pygame.draw.rect(screen, RED, b_b, border_radius=10)
         b_t = pygame.Rect(450, 330, 120, 50)
-        pygame.draw.rect(screen, YELLOW, b_t, border_radius=10)
-        draw_text("BACK", FONT_SMALL, WHITE, 290, 355)
-        draw_text("TOP UP", FONT_SMALL, BLACK, 510, 355)
-        if m_c and b_b.collidepoint(m_p):
+        
+        mx, my = pygame.mouse.get_pos()
+        is_h_b = b_b.collidepoint(mx, my)
+        is_h_t = b_t.collidepoint(mx, my)
+        
+        draw_button(screen, "BACK", FONT_SMALL, WHITE, b_b, RED, is_h_b)
+        draw_button(screen, "TOP UP", FONT_SMALL, BLACK, b_t, YELLOW, is_h_t)
+        
+        if m_c and is_h_b:
             tap_snd.play()
             state = 6
 
@@ -1047,19 +1008,39 @@ while running:
     # MISSION INFO (STATE 2)
     # ==========================
     elif state == 2:
-        pygame.draw.rect(screen, DARK_GRAY, (200, 200, 400, 250), border_radius=20)
-        draw_text(f"Missions {selected_level}", FONT_MSG, YELLOW, 400, 260)
-        b_r, b_a = pygame.Rect(230, 340, 140, 60), pygame.Rect(430, 340, 140, 60)
-        pygame.draw.rect(screen, GREEN, b_r, border_radius=10)
-        pygame.draw.rect(screen, RED, b_a, border_radius=10)
-        draw_text("PLAY", FONT_UI, WHITE, 300, 370)
-        draw_text("BACK", FONT_UI, WHITE, 500, 370)
-        if m_c:
-            if b_r.collidepoint(m_p):
-                tap_snd.play()
-                reset_level_logic(selected_level); state = 3
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
 
-            if b_a.collidepoint(m_p):
+        box_rect = pygame.Rect(180, 160, 440, 280)
+        draw_panel(screen, box_rect, alpha=240, border_color=CYAN)
+
+        env_names = {1: "GALAXY SECTOR", 2: "NEBULA ZONE", 3: "BLACKHOLE HORIZON"}
+        curr_env_title = env_names.get(current_selected_env, "GALAXY SECTOR")
+
+        draw_text(curr_env_title, FONT_UI, CYAN, 400, 200)
+        draw_text(f"MISSION {selected_level}", FONT_MSG, YELLOW, 400, 245)
+
+        boss_kill_reqs = {1: 50, 2: 100, 3: 100, 4: 150, 5: 150, 6: 200, 7: 200, 8: 200, 9: 200, 10: 200}
+        req_k = 250 if selected_level >= 11 else boss_kill_reqs.get(selected_level, 200)
+        draw_text(f"Eliminate {req_k} Enemies to summon Boss", FONT_SMALL, WHITE, 400, 300)
+
+        b_r = pygame.Rect(210, 350, 180, 55)
+        b_a = pygame.Rect(410, 350, 180, 55)
+
+        mx, my = pygame.mouse.get_pos()
+        is_h_r = b_r.collidepoint(mx, my)
+        is_h_a = b_a.collidepoint(mx, my)
+
+        draw_button(screen, "LAUNCH", FONT_UI, WHITE, b_r, GREEN, is_h_r)
+        draw_button(screen, "BACK", FONT_UI, WHITE, b_a, RED, is_h_a)
+
+        if m_c:
+            if is_h_r:
+                tap_snd.play()
+                reset_level_logic(selected_level)
+                state = 3
+            elif is_h_a:
                 tap_snd.play()
                 state = 1
 
@@ -1068,171 +1049,167 @@ while running:
     # ==========================
     elif state == 3:
 
-        pause_btn_rect = pygame.Rect(WIDTH - 50, 70, 40, 40)
-        pygame.draw.rect(screen, WHITE, pause_btn_rect, border_radius=5)
-        draw_text("||", FONT_SMALL, BLACK, WIDTH - 30, 90)
-        if m_c and pause_btn_rect.collidepoint(m_p):
-            tap_snd.play()
-            state = 10
-
         # --- SMART CONTROLS LOGIC ---
         if fire_cooldown > 0:
             fire_cooldown -= 1
 
         is_firing = False
+        keys = pygame.key.get_pressed()
+        mouse_pressed = pygame.mouse.get_pressed()[0]
+        mx, my = pygame.mouse.get_pos()
+
+        pause_btn_rect = pygame.Rect(WIDTH - 55, 15, 40, 40)
+        is_h_pause = pause_btn_rect.collidepoint(mx, my)
 
         if control_type == 'PC':
-            keys = pygame.key.get_pressed()
-            if (keys[pygame.K_a] or keys[pygame.K_LEFT]) and player_rect.left > 0: player_rect.x -= unlocked_speed
-            if (keys[pygame.K_d] or keys[pygame.K_RIGHT]) and player_rect.right < WIDTH: player_rect.x += unlocked_speed
+            # Horizontal + Vertical Movement for dodging
+            if (keys[pygame.K_a] or keys[pygame.K_LEFT]) and player_rect.left > 0:
+                player_rect.x -= unlocked_speed
+            if (keys[pygame.K_d] or keys[pygame.K_RIGHT]) and player_rect.right < WIDTH:
+                player_rect.x += unlocked_speed
+            if (keys[pygame.K_w] or keys[pygame.K_UP]) and player_rect.top > 100:
+                player_rect.y -= unlocked_speed
+            if (keys[pygame.K_s] or keys[pygame.K_DOWN]) and player_rect.bottom < HEIGHT - 10:
+                player_rect.y += unlocked_speed
 
-            if m_c and not pause_btn_rect.collidepoint(m_p):
+            # Hold SPACE or Mouse Click to auto-fire
+            if (keys[pygame.K_SPACE] or (mouse_pressed and not is_h_pause)) and fire_cooldown <= 0:
                 is_firing = True
+                fire_cooldown = 8 if current_level <= 15 else 6
 
         elif control_type == 'MOBILE':
-            mouse_pressed = pygame.mouse.get_pressed()[0]
-            if mouse_pressed:
-                mx, my = pygame.mouse.get_pos()
+            if mouse_pressed and not is_h_pause:
+                if player_rect.centerx < mx - 5 and player_rect.right < WIDTH:
+                    player_rect.x += unlocked_speed
+                elif player_rect.centerx > mx + 5 and player_rect.left > 0:
+                    player_rect.x -= unlocked_speed
 
-                # Slide to move logic
-
-                if player_rect.centerx < mx and player_rect.right < WIDTH:
-                        player_rect.x += unlocked_speed
-                elif player_rect.centerx > mx and player_rect.left > 0:
-                        player_rect.x -= unlocked_speed
-
+                if player_rect.centery < my - 5 and player_rect.bottom < HEIGHT - 10:
+                    player_rect.y += unlocked_speed
+                elif player_rect.centery > my + 5 and player_rect.top > 100:
+                    player_rect.y -= unlocked_speed
 
                 if fire_cooldown <= 0:
                     is_firing = True
-                    if current_level <= 15: # Goli nikalne ke beech ka gap (tap and hold logic)
-                        fire_cooldown = 9
-                    else:
-                        fire_cooldown = 7
+                    fire_cooldown = 8 if current_level <= 15 else 6
 
         if is_firing:
             b_cnt = unlocked_bullets + (1 if skills['double']['active'] else 0)
             for i in range(b_cnt):
-                offset = (i - b_cnt / 2) * 15 + 7
-                bullets.append({'rect': pygame.Rect(player_rect.centerx + offset, player_rect.top, 6, 15)})
+                offset = (i - (b_cnt - 1) / 2.0) * 16
+                bullets.append({'rect': pygame.Rect(player_rect.centerx + int(offset) - 3, player_rect.top - 8, 6, 16)})
             shoot_snd.play()
 
-        # --- SMART CONTROLS LOGIC END ---
+        # Pause button click
+        if m_c and is_h_pause:
+            tap_snd.play()
+            state = 10
 
-        # ... (tumhara SMART CONTROLS LOGIC khatam hone ke baad) ...
-        # shoot_snd.play() wali line ke baad yahan se replace karo:
-
-        # Y-axis mein dheere dheere niche move karo
-        galaxy_bg_y += 0.03
-
-        # Agar image puri niche chali jaye, to usko wapas reset kar do
+        # Dynamic Scrolling Background based on selected environment
+        galaxy_bg_y += 0.05
         if galaxy_bg_y >= bg_height:
             galaxy_bg_y = 0
 
-        # Ek hi image ko 2 baar draw karna padega taaki upar koi khali (black) space na dikhe
-        screen.blit(galaxy_bg, (0, int(galaxy_bg_y)))
-        screen.blit(galaxy_bg, (0, int(galaxy_bg_y) - bg_height))
+        current_bg = galaxy_bg if current_selected_env == 1 else (nebula_bg if current_selected_env == 2 else blackhole_bg)
+        screen.blit(current_bg, (0, int(galaxy_bg_y)))
+        screen.blit(current_bg, (0, int(galaxy_bg_y) - bg_height))
 
-        # 🔥 2. STARS LOOP & TWINKLE EFFECT (Background ke Upar) 🔥
+        # Stars Parallax Loop & Twinkle
         for s in stars:
-            # Twinkle effect (Glow aur dim karne ke liye brightness vary hogi)
             current_brightness = max(30, s[3] - random.randint(0, 80))
-            star_color = (current_brightness, current_brightness, current_brightness)
-
-            # Ekdam point ki tarah draw karega (1x1 ya 2x2 pixel)
-            pygame.draw.rect(screen, star_color, (s[0], int(s[1]), 2, 2))
-
-            # Stars ko niche move karo (+Y axis)
+            pygame.draw.rect(screen, (current_brightness, current_brightness, current_brightness), (s[0], int(s[1]), 2, 2))
             s[1] += s[2]
-
-            # Infinite Loop: Screen ke niche jaye to wapas upar bhej do
             if s[1] > HEIGHT:
                 s[1] = 0
                 s[0] = random.randint(0, WIDTH)
 
-        # 👇👇 NAYA CODE YAHAN PASTE KARO 👇👇
-        # Asteroids ko move (update) aur screen par draw karo
+        # Asteroids Update & Collision
         asteroid_group.update()
         asteroid_group.draw(screen)
 
-        # Player aur Asteroid ka takrana (Collision Check)
-        for ast in asteroid_group:
+        for ast in list(asteroid_group):
             if ast.rect.colliderect(player_rect):
-                player_health -= 30  # 15 damage
-                ast.kill()  # Takrane ke baad asteroid tut jayega
-                hit_snd.play()  # Hit sound play hogi
-        # 👆👆 NAYA CODE YAHAN KHATAM 👆👆
+                if not skills['immortal']['active'] and revive_protection_timer <= 0:
+                    player_health -= 30
+                    hit_snd.play()
+                ast.kill()
+                # Asteroid shatter particles
+                for _ in range(12):
+                    particles.append([ast.rect.centerx, ast.rect.centery, random.uniform(-4, 4), random.uniform(-4, 4), random.randint(3, 7), (120, 120, 130)])
 
         current_tick = pygame.time.get_ticks()
-
-        # Level ke hisaab se max limit set karna
-        if current_level <= 30:
-            max_asteroids_in_match = 12
-        else:
-            max_asteroids_in_match = 7  # Higher levels mein kam asteroids taaki lag na ho
-
-        # --- SPAWN LOGIC START ---
-        # 1. Check karo kya abhi limit bachi hai?
+        max_asteroids_in_match = 12 if current_level <= 30 else 7
         if asteroids_spawned < max_asteroids_in_match:
-
-            # 2. Check karo kya spawn karne ka waqt ho gaya hai?
             if current_tick - last_spawn_tick > next_spawn_time:
-                # Naya asteroid banao aur group mein dalo
                 new_asteroid = Asteroid(asteroid_img)
                 asteroid_group.add(new_asteroid)
-
-                # Counter badhao aur timer reset karo
                 asteroids_spawned += 1
                 last_spawn_tick = current_tick
-
-                # Agla asteroid kab aayega (random 8 to 15 seconds)
-                next_spawn_time = random.randint(8000, 15000)
-        # --- SPAWN LOGIC END ---
-
-    # ===============================================
-    # Iske baad tumhara Enemies aur Boss ka code chalne do
-
+                next_spawn_time = random.randint(7000, 14000)
 
         all_enemies_objs = fighters + elites + heavies
 
         # --- SMART DIFFICULTY ENGINE ---
-        # 1. SPEED LOCK: Level 10 ke baad speed lock ho jayegi
         eff_speed_lvl = min(current_level, 10)
-
-        # 🔥 DAMAGE LOCK: Level 5 ke baad enemies ka damage nahi badhega
         eff_dmg_lvl = min(current_level, 5)
 
-        # SPAWN & FIRE RATE (Ye lagatar badhenge taaki mazza aaye)
-        spawn_chance = max(10, int(50 - (current_level * 1.0)))
-        fire_chance = max(30, int(120 - (current_level * 2.2)))
+        spawn_chance = max(10, int(45 - (current_level * 0.9)))
+        fire_chance = max(25, int(110 - (current_level * 2.0)))
 
-        max_fighters = int(8 + (current_level * 0.5))
-        max_elites = int(5 + (current_level * 0.3))
+        max_fighters = int(7 + (current_level * 0.5))
+        max_elites = int(4 + (current_level * 0.3))
         max_heavies = int(2 + (current_level * 0.2))
 
         # --- SPAWN EXECUTION ---
         if not boss_active and not boss_arriving and boss_defeated_timer == 0:
+            # 1. Fighter: Swift scout
             if len(fighters) < max_fighters and random.randint(1, spawn_chance) == 1:
-                nr = fighter_img.get_rect(center=(random.randint(50, 750), -50))
-                if check_enemy_spawn(nr, all_enemies_objs): fighters.append({'rect': nr, 'hp': 1, 'start_x': nr.x, 'time': 0, 'type': 'fighter'})
+                nr = fighter_img.get_rect(center=(random.randint(50, WIDTH - 50), -50))
+                if check_enemy_spawn(nr, all_enemies_objs):
+                    fighters.append({'rect': nr, 'hp': 1, 'max_hp': 1, 'start_x': nr.x, 'time': random.randint(0, 50), 'type': 'fighter', 'dive_speed': random.uniform(2.5, 4.0)})
 
-            if current_level >= 2 and len(elites) < max_elites and random.randint(1, int(spawn_chance * 1.5)) == 1:
-                nr = elite_img.get_rect(center=(random.randint(50, 750), -50))
-                if check_enemy_spawn(nr, all_enemies_objs): elites.append({'rect': nr, 'hp': 2, 'start_x': nr.x, 'time': 0, 'type': 'elite'})
+            # 2. Elite: Tactical weaving cruiser with dual shots
+            if current_level >= 2 and len(elites) < max_elites and random.randint(1, int(spawn_chance * 1.4)) == 1:
+                nr = elite_img.get_rect(center=(random.randint(50, WIDTH - 50), -50))
+                if check_enemy_spawn(nr, all_enemies_objs):
+                    elites.append({'rect': nr, 'hp': 3, 'max_hp': 3, 'start_x': nr.x, 'time': random.randint(0, 50), 'type': 'elite'})
 
-            if current_level >= 3 and len(heavies) < max_heavies and random.randint(1, int(spawn_chance * 2.5)) == 1:
-                nr = heavy_img.get_rect(center=(random.randint(50, 750), -50))
-                if check_enemy_spawn(nr, all_enemies_objs): heavies.append({'rect': nr, 'hp': 5, 'start_x': nr.x, 'time': 0, 'type': 'heavy'})
+            # 3. Heavy: Armored tank dreadnought
+            if current_level >= 3 and len(heavies) < max_heavies and random.randint(1, int(spawn_chance * 2.2)) == 1:
+                nr = heavy_img.get_rect(center=(random.randint(60, WIDTH - 60), -60))
+                if check_enemy_spawn(nr, all_enemies_objs):
+                    heavies.append({'rect': nr, 'hp': 8, 'max_hp': 8, 'start_x': nr.x, 'time': 0, 'type': 'heavy'})
 
-        for e_list, val in [(fighters, 1), (elites, 2), (heavies, 5)]:
+        # --- ENEMY MOVEMENT, COMBAT & MECHANICS ---
+        for e_list, val, e_type in [(fighters, 1, 'fighter'), (elites, 2, 'elite'), (heavies, 5, 'heavy')]:
             for e in e_list[:]:
-                if 'time' not in e: e['time'] = 0
-                if 'start_x' not in e: e['start_x'] = e['rect'].x
-                e['time'] += 1
+                e['time'] = e.get('time', 0) + 1
+                e['start_x'] = e.get('start_x', e['rect'].x)
 
-                speed_bonus = (eff_speed_lvl // 3) * 1
-                move_speed_y = int(2 + (val // 2) + (eff_speed_lvl * 0.3) + speed_bonus)
-                e['rect'].y += move_speed_y
+                # Custom Mechanics per Enemy Type
+                if e_type == 'fighter':
+                    # High speed dive with fast strafe
+                    e['rect'].y += int(e.get('dive_speed', 3.0) + eff_speed_lvl * 0.2)
+                    strafe = math.sin(e['time'] * 0.08) * 3.5
+                    e['rect'].x += int(strafe)
+                elif e_type == 'elite':
+                    # Sine wave weaving with player tracking
+                    e['rect'].y += int(2.0 + eff_speed_lvl * 0.15)
+                    wave = math.sin(e['time'] * 0.05) * 6
+                    e['rect'].x = int(e['start_x'] + wave)
+                    if e['rect'].centerx < player_rect.centerx - 10:
+                        e['start_x'] += 1
+                    elif e['rect'].centerx > player_rect.centerx + 10:
+                        e['start_x'] -= 1
+                elif e_type == 'heavy':
+                    # Slow, armored steady descent
+                    e['rect'].y += int(1.4 + eff_speed_lvl * 0.1)
+                    if e['rect'].centerx < player_rect.centerx - 20:
+                        e['rect'].x += 1
+                    elif e['rect'].centerx > player_rect.centerx + 20:
+                        e['rect'].x -= 1
 
+                # Separation logic to avoid clumping
                 for other in all_enemies_objs:
                     if e != other and e['rect'].colliderect(other['rect']):
                         if e['rect'].x < other['rect'].x:
@@ -1240,287 +1217,282 @@ while running:
                         else:
                             e['rect'].x += 2
 
-                # Tracking player and Movement patterns based on Environment
-                track_speed_x = 1 + int(eff_speed_lvl * 0.25)
-                
-                if current_selected_env == 1: # Galaxy: Simple tracking
-                    if e['rect'].x < player_rect.x:
-                        e['rect'].x += track_speed_x
-                    elif e['rect'].x > player_rect.x:
-                        e['rect'].x -= track_speed_x
-                elif current_selected_env == 2: # Nebula: Sine wave + tracking
-                    wave_offset = math.sin(e['time'] * 0.05) * 5
-                    e['rect'].x += int(wave_offset)
-                    if e['rect'].x < player_rect.x - 20: e['rect'].x += track_speed_x
-                    elif e['rect'].x > player_rect.x + 20: e['rect'].x -= track_speed_x
-                elif current_selected_env == 3: # Blackhole: Aggressive zig-zag
-                    wave_offset = math.cos(e['time'] * 0.1) * 8
-                    e['rect'].x += int(wave_offset)
-                    if e['rect'].x < player_rect.x: e['rect'].x += track_speed_x + 1
-                    elif e['rect'].x > player_rect.x: e['rect'].x -= track_speed_x + 1
-                    
                 e['rect'].x = max(0, min(WIDTH - e['rect'].width, e['rect'].x))
 
+                # Enemy Shooting Archetypes
                 if random.randint(1, int(fire_chance)) == 1:
-                    dmg = (eff_dmg_lvl * val)
-                    size = (6, 12) if val < 5 else (12, 12)
-                    
-                    # Fire logic varies by environment
-                    if current_selected_env >= 2 and val >= 2: # Elites and Heavies fire double/triple in higher envs
-                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].left + 5, e['rect'].bottom, size[0], size[1]), 'damage': dmg})
-                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].right - 5 - size[0], e['rect'].bottom, size[0], size[1]), 'damage': dmg})
-                        if current_selected_env == 3 and val == 5: # Heavies in Blackhole fire triple spread
-                             enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx - (size[0]//2), e['rect'].bottom, size[0], size[1]), 'damage': dmg})
-                    else:
-                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx, e['rect'].bottom, size[0], size[1]), 'damage': dmg})
+                    dmg = eff_dmg_lvl * val
+                    if e_type == 'fighter':
+                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx - 3, e['rect'].bottom, 6, 14), 'damage': dmg, 'color': RED})
+                    elif e_type == 'elite':
+                        # Twin plasma lasers
+                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].left + 4, e['rect'].bottom, 6, 14), 'damage': dmg, 'color': MAGENTA})
+                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].right - 10, e['rect'].bottom, 6, 14), 'damage': dmg, 'color': MAGENTA})
+                    elif e_type == 'heavy':
+                        # Triple heavy blast
+                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx - 5, e['rect'].bottom, 10, 16), 'damage': dmg + 5, 'color': ORANGE})
+                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].left + 5, e['rect'].bottom - 5, 8, 14), 'damage': dmg, 'color': YELLOW})
+                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].right - 13, e['rect'].bottom - 5, 8, 14), 'damage': dmg, 'color': YELLOW})
 
+                # Collision with Player
                 if e['rect'].colliderect(player_rect):
-                    if e in e_list: e_list.remove(e)
-                    if not skills['immortal']['active']:
-                        player_health -= 20
-                        hit_snd.set_volume(sfx_vol)
+                    if e in e_list:
+                        e_list.remove(e)
+                    if not skills['immortal']['active'] and revive_protection_timer <= 0:
+                        player_health -= (15 if e_type == 'fighter' else 25 if e_type == 'elite' else 40)
                         hit_snd.play()
+                    # Crash particles
+                    for _ in range(15):
+                        particles.append([e['rect'].centerx, e['rect'].centery, random.uniform(-4, 4), random.uniform(-4, 4), random.randint(3, 6), random.choice(BLAST_COLORS)])
                 elif e['rect'].top > HEIGHT:
-                    if e in e_list: e_list.remove(e)
+                    if e in e_list:
+                        e_list.remove(e)
 
+        # Boss Logic
         if boss_active:
             if boss_death_timer > 0:
                 boss_death_timer -= 1
-                if boss_death_timer % 5 == 0:
-                    # BOSS DEATH BLAST LOGIC
-                    # Boss ke marne par ek bada dhamaka
-
-                    for _ in range(80):  # Boss marega toh 80 particles ek saath niklenge!
+                if boss_death_timer % 4 == 0:
+                    for _ in range(30):
                         p_color = random.choice(BLAST_COLORS)
-
-                        # Speed zyada rakhi hai taaki explosion door tak faile
-                        p_speed_x = random.uniform(-9, 9)
-                        p_speed_y = random.uniform(-9, 9)
-
-                        # Radius bada rakha hai taaki aag ke gole bade dikhein
-                        p_radius = random.randint(6, 15)
-
-                        particles.append(
-                            [boss_rect.centerx, boss_rect.centery, p_speed_x, p_speed_y, p_radius, p_color])
+                        particles.append([boss_rect.centerx + random.randint(-40, 40), boss_rect.centery + random.randint(-30, 30), random.uniform(-8, 8), random.uniform(-8, 8), random.randint(5, 14), p_color])
                 if boss_death_timer == 1:
                     boss_active = False
                     boss_defeated_timer = 120
                     boss_expl_snd.play()
                     if current_selected_env == 1 and current_level == max_galaxy_level and max_galaxy_level < 40:
                         max_galaxy_level += 1
-                        env2_unlocked = max_galaxy_level > 20
+                        env2_unlocked = True
                     elif current_selected_env == 2 and current_level == max_nebula_level and max_nebula_level < 40:
                         max_nebula_level += 1
-                        env3_unlocked = max_nebula_level > 20
+                        env3_unlocked = True
                     elif current_selected_env == 3 and current_level == max_blackhole_level and max_blackhole_level < 40:
                         max_blackhole_level += 1
                         save_game()
             else:
-                # (Move boss top into screen code remains same)
-                if boss_rect.top < 60: boss_rect.y += 2
+                if boss_rect.top < 70:
+                    boss_rect.y += 2
 
-                # Determine speed based on tier (Cap at Tier 8)
                 boss_eff_tier = min(((current_level - 1) // 5) + 1, 8)
                 b_spd = 2 + (boss_eff_tier // 2)
 
-                # 🔥 VIBRATION BUG FIX: Smart Movement Logic 🔥
-                # Agar target X durbin se zyada dur hai, toh snap karo
                 if boss_rect.centerx < boss_target_x:
                     dist_x = boss_target_x - boss_rect.centerx
-                    if dist_x < b_spd:
-                        boss_rect.centerx = boss_target_x  # Snap to exact target
-                    else:
-                        boss_rect.x += b_spd  # Move step
+                    boss_rect.x += min(dist_x, b_spd)
                 elif boss_rect.centerx > boss_target_x:
                     dist_x = boss_rect.centerx - boss_target_x
-                    if dist_x < b_spd:
-                        boss_rect.centerx = boss_target_x  # Snap to exact target
-                    else:
-                        boss_rect.x -= b_spd  # Move step
+                    boss_rect.x -= min(dist_x, b_spd)
 
-                # Jab exact target tak pahunch jaye, tab naya target choose karo
-                if abs(boss_rect.centerx - boss_target_x) < 2:
+                if abs(boss_rect.centerx - boss_target_x) < 4:
                     boss_target_x = random.randint(100, 700)
 
-                # SHOOT CHANCE KO INT MEIN CONVERT KIYA HAI (TypeError fix karne ke liye)
-                shoot_chance = max(10, 30 - (current_level * 2))
+                shoot_chance = max(8, 28 - (current_level * 2))
                 if random.randint(1, int(shoot_chance)) == 1:
-                    # GOLI AB BOSS KE CENTER SE THODA NICHE (NOSE) SE NIKLEGI
                     bullet_x = boss_rect.centerx - 6
-                    bullet_y = boss_rect.centery - 10
+                    bullet_y = boss_rect.centery + 10
                     boss_eff_damage = min(current_level, 5)
-                    enemy_bullets.append({'rect': pygame.Rect(bullet_x, bullet_y, 12, 20),
-                                          'damage': 10 * boss_eff_damage})
+                    enemy_bullets.append({'rect': pygame.Rect(bullet_x, bullet_y, 12, 22), 'damage': 10 * boss_eff_damage, 'color': RED})
 
-            # --- DRAWING & COLLISIONS ---
+        # --- DRAWING & COLLISIONS ---
+        # Enemy Bullets
         for eb in enemy_bullets[:]:
             eb['rect'].y += 6
-            pygame.draw.rect(screen, RED if eb['rect'].width < 10 else MAGENTA, eb['rect'])
+            b_col = eb.get('color', RED)
+            pygame.draw.rect(screen, b_col, eb['rect'], border_radius=3)
+            # Glowing core
+            pygame.draw.rect(screen, WHITE, eb['rect'].inflate(-2, -4), border_radius=2)
+
             if eb['rect'].colliderect(player_rect):
-                if not skills['immortal']['active']:
+                if not skills['immortal']['active'] and revive_protection_timer <= 0:
                     player_health -= eb['damage']
-
                     hit_snd.play()
-                if eb in enemy_bullets: enemy_bullets.remove(eb)
+                if eb in enemy_bullets:
+                    enemy_bullets.remove(eb)
             elif eb['rect'].top > HEIGHT:
-                if eb in enemy_bullets: enemy_bullets.remove(eb)
+                if eb in enemy_bullets:
+                    enemy_bullets.remove(eb)
 
+        # Player Bullets
         for b in bullets[:]:
-            b['rect'].y -= 12
+            b['rect'].y -= 14
             hit = False
 
             if boss_active and boss_death_timer == 0:
                 if b['rect'].colliderect(boss_rect):
                     boss_hp -= 5
-
                     hit_snd.play()
-                    if b in bullets: bullets.remove(b)
+                    if b in bullets:
+                        bullets.remove(b)
                     if boss_hp <= 0:
                         boss_death_timer = 150
                         update_coins(current_level * 50)
                     hit = True
 
             if not hit:
-                for e_list, c_val in [(fighters, 1), (elites, 2), (heavies, 5)]:
+                for e_list, c_val, _ in [(fighters, 1, 'fighter'), (elites, 2, 'elite'), (heavies, 5, 'heavy')]:
                     for e in e_list[:]:
                         if b['rect'].colliderect(e['rect']):
                             e['hp'] -= 1
-                            if b in bullets: bullets.remove(b)
+                            if b in bullets:
+                                bullets.remove(b)
 
                             if e['hp'] <= 0:
-                                # ✅ FIX 1: Enemy ko list se remove karo taaki wo gayab ho jaye
                                 if e in e_list:
                                     e_list.remove(e)
-
-                                update_coins(1 if c_val == 1 else 2 if c_val == 2 else 3)
+                                update_coins(1 if c_val == 1 else 2 if c_val == 2 else 5)
                                 kill_count += 1
-
                                 expl_snd.play()
 
-                                # ✅ FIX 2: Blast particles mein 'f' ki jagah 'e' use karo
-                                for _ in range(15):
+                                for _ in range(18):
                                     p_color = random.choice(BLAST_COLORS)
-                                    p_speed_x = random.uniform(-4, 4)
-                                    p_speed_y = random.uniform(-4, 4)
-                                    p_radius = random.randint(3, 6)
-
-                                    # Yahan 'e' use hoga kyunki current enemy wahi hai
-                                    particles.append(
-                                        [e['rect'].centerx, e['rect'].centery, p_speed_x, p_speed_y, p_radius,
-                                            p_color])
+                                    particles.append([e['rect'].centerx, e['rect'].centery, random.uniform(-5, 5), random.uniform(-5, 5), random.randint(3, 7), p_color])
                             else:
-
                                 hit_snd.play()
+                                # Small spark
+                                particles.append([b['rect'].centerx, b['rect'].top, random.uniform(-2, 2), random.uniform(-2, 2), 3, CYAN])
                             hit = True
                             break
-                    if hit: break
+                    if hit:
+                        break
 
-            # Powerups logic
-        if random.randint(1, 800) == 1:
+        # Powerups Spawning
+        if random.randint(1, 700) == 1:
             t = random.choice(['immortal', 'double'])
-            achievements.append({'rect': pygame.Rect(random.randint(50, 750), -50, 30, 30), 'type': t})
+            achievements.append({'rect': pygame.Rect(random.randint(50, WIDTH - 50), -50, 32, 32), 'type': t})
 
         for a in achievements[:]:
             a['rect'].y += 3
-            pygame.draw.circle(screen, skills[a['type']]['color'], a['rect'].center, 15)
+            # Glowing powerup orb
+            p_color = skills[a['type']]['color']
+            pygame.draw.circle(screen, p_color, a['rect'].center, 16)
+            pygame.draw.circle(screen, WHITE, a['rect'].center, 8)
+            draw_text("S" if a['type'] == 'immortal' else "2X", FONT_HP, BLACK, a['rect'].centerx, a['rect'].centery)
+
             if a['rect'].colliderect(player_rect):
                 skills[a['type']]['active'] = True
                 skills[a['type']]['timer'] = now + skills[a['type']]['duration']
-                if a in achievements: achievements.remove(a)
+                tap_snd.play()
+                if a in achievements:
+                    achievements.remove(a)
+            elif a['rect'].top > HEIGHT:
+                if a in achievements:
+                    achievements.remove(a)
 
-            # Drawing Layers
-        for b in bullets: screen.blit(bullet_img, b['rect'])
-        for f in fighters: screen.blit(fighter_img, f['rect'])
-        for e in elites: screen.blit(elite_img, e['rect'])
-        for h in heavies: screen.blit(heavy_img, h['rect'])
+        # Drawing Layer: Bullets with neon glow
+        for b in bullets:
+            pygame.draw.rect(screen, CYAN, b['rect'], border_radius=3)
+            pygame.draw.rect(screen, WHITE, b['rect'].inflate(-2, -4), border_radius=2)
+
+        # Drawing Layer: Ships & HP Indicators for Elite/Heavy
+        for f in fighters:
+            screen.blit(fighter_img, f['rect'])
+
+        for e in elites:
+            screen.blit(elite_img, e['rect'])
+            if e['hp'] < e['max_hp']:
+                hp_w = int((e['rect'].width - 8) * (e['hp'] / e['max_hp']))
+                pygame.draw.rect(screen, (40, 40, 40), (e['rect'].left + 4, e['rect'].top - 8, e['rect'].width - 8, 4), border_radius=2)
+                pygame.draw.rect(screen, MAGENTA, (e['rect'].left + 4, e['rect'].top - 8, hp_w, 4), border_radius=2)
+
+        for h in heavies:
+            screen.blit(heavy_img, h['rect'])
+            if h['hp'] < h['max_hp']:
+                hp_w = int((h['rect'].width - 10) * (h['hp'] / h['max_hp']))
+                pygame.draw.rect(screen, (40, 40, 40), (h['rect'].left + 5, h['rect'].top - 10, h['rect'].width - 10, 5), border_radius=2)
+                pygame.draw.rect(screen, ORANGE, (h['rect'].left + 5, h['rect'].top - 10, hp_w, 5), border_radius=2)
 
         if boss_active and boss_death_timer == 0:
             screen.blit(current_boss_img, boss_rect)
 
-            # 🔥 3. PARTICLES DRAW (Ab Blast Effect sabse upar dikhega) 🔥
-        # PARTICLE UPDATE AUR DRAW LOOP (Main loop ke andar)
+        # Particles Update & Draw
         for particle in particles[:]:
-            # Position update (X aur Y speed jod rahe hain)
             particle[0] += particle[2]
             particle[1] += particle[3]
-
-            # RADIUS SHRINKING: Aag dheere dheere thandi ho rahi hai (is line se asli feel aayegi)
-            particle[4] -= 0.2
-
-            # Agar radius 0 se bada hai toh draw karo
+            particle[4] -= 0.25
             if particle[4] > 0:
                 pygame.draw.circle(screen, particle[5], (int(particle[0]), int(particle[1])), int(particle[4]))
             else:
-                # Pighal gaya toh list se hata do
                 particles.remove(particle)
 
-        # Player sabse upar rahega
+        # Player Shield / Revive Protection aura
+        if skills['immortal']['active'] or revive_protection_timer > 0:
+            shield_radius = max(player_rect.width, player_rect.height) // 2 + 10
+            shield_surf = pygame.Surface((shield_radius * 2, shield_radius * 2), pygame.SRCALPHA)
+            shield_color = (0, 255, 255, 120) if skills['immortal']['active'] else (255, 255, 100, 140)
+            pygame.draw.circle(shield_surf, shield_color, (shield_radius, shield_radius), shield_radius, width=4)
+            screen.blit(shield_surf, (player_rect.centerx - shield_radius, player_rect.centery - shield_radius))
 
+        if revive_protection_timer > 0:
+            revive_protection_timer -= 1
 
+        # Draw Player
         screen.blit(player_img, player_rect)
 
         # ==========================
         # MODERN UI & HUD
         # ==========================
-        # Top gradient bar for a modern look
-        hud_bg = pygame.Surface((WIDTH, 70), pygame.SRCALPHA)
-        pygame.draw.rect(hud_bg, (10, 15, 30, 220), hud_bg.get_rect(), border_bottom_left_radius=20, border_bottom_right_radius=20)
+        hud_bg = pygame.Surface((WIDTH, 65), pygame.SRCALPHA)
+        pygame.draw.rect(hud_bg, (12, 18, 30, 230), hud_bg.get_rect(), border_bottom_left_radius=20, border_bottom_right_radius=20)
+        pygame.draw.rect(hud_bg, (0, 200, 255, 80), hud_bg.get_rect(), width=2, border_bottom_left_radius=20, border_bottom_right_radius=20)
         screen.blit(hud_bg, (0, 0))
 
         # Coin Display
-        screen.blit(coin_icon, (20, 15))
-        draw_text(f"{total_coins}", FONT_HUD, YELLOW, 70, 18, center=False)
-        
+        screen.blit(coin_icon, (15, 12))
+        draw_text(f"{total_coins}", FONT_HUD, YELLOW, 65, 16, center=False)
+
         # Current Level Display
         env_names = {1: "GALAXY", 2: "NEBULA", 3: "BLACKHOLE"}
-        draw_text(f"{env_names.get(current_selected_env, 'GALAXY')} LVL {current_level}", FONT_UI, CYAN, WIDTH // 2, 35)
+        draw_text(f"{env_names.get(current_selected_env, 'GALAXY')} • LVL {current_level}", FONT_UI, CYAN, WIDTH // 2 - 20, 32)
+
+        # Pause Button in HUD
+        draw_button(screen, "||", FONT_SMALL, WHITE, pause_btn_rect, (40, 50, 70), is_h_pause, border_radius=10, outline_color=CYAN)
 
         # Player Health Bar (Right Side)
-        health_bar_bg = pygame.Rect(WIDTH - 230, 25, 210, 20)
-        pygame.draw.rect(screen, (40, 0, 0), health_bar_bg, border_radius=10)
-        pygame.draw.rect(screen, LIGHT_GRAY, health_bar_bg, 2, border_radius=10)
-        
-        curr_hp_w = int(206 * (max(0, player_health) / unlocked_hp))
+        health_bar_bg = pygame.Rect(WIDTH - 250, 20, 180, 22)
+        pygame.draw.rect(screen, (35, 10, 15), health_bar_bg, border_radius=11)
+        pygame.draw.rect(screen, (70, 70, 90), health_bar_bg, 2, border_radius=11)
+
+        curr_hp_w = int(176 * (max(0, player_health) / unlocked_hp))
         if curr_hp_w > 0:
             hp_color = GREEN if player_health > unlocked_hp * 0.3 else RED
-            pygame.draw.rect(screen, hp_color, (WIDTH - 228, 27, curr_hp_w, 16), border_radius=8)
-        
-        draw_text(f"{int(max(0, player_health))}/{unlocked_hp}", FONT_HP, WHITE, WIDTH - 125, 35)
+            pygame.draw.rect(screen, hp_color, (WIDTH - 248, 22, curr_hp_w, 18), border_radius=9)
 
-        # Boss Health Bar (Top Center, Below Level)
+        draw_text(f"HP {int(max(0, player_health))}/{unlocked_hp}", FONT_HP, WHITE, WIDTH - 160, 31)
+
+        # Boss Health Bar
         if boss_active and boss_death_timer == 0:
-            boss_hp_bg = pygame.Rect(WIDTH // 2 - 150, 75, 300, 15)
-            pygame.draw.rect(screen, (50, 0, 0), boss_hp_bg, border_radius=7)
-            pygame.draw.rect(screen, WHITE, boss_hp_bg, 2, border_radius=7)
-            
-            boss_hp_w = int(296 * (max(0, boss_hp) / boss_max_hp))
+            boss_hp_bg = pygame.Rect(WIDTH // 2 - 160, 75, 320, 20)
+            pygame.draw.rect(screen, (40, 10, 10), boss_hp_bg, border_radius=10)
+            pygame.draw.rect(screen, RED, boss_hp_bg, 2, border_radius=10)
+
+            boss_hp_w = int(316 * (max(0, boss_hp) / boss_max_hp))
             if boss_hp_w > 0:
-                pygame.draw.rect(screen, MAGENTA, (WIDTH // 2 - 148, 77, boss_hp_w, 11), border_radius=5)
-            draw_text("BOSS", FONT_HP, WHITE, WIDTH // 2, 75)
+                pygame.draw.rect(screen, (255, 30, 80), (WIDTH // 2 - 158, 77, boss_hp_w, 16), border_radius=8)
+            draw_text(f"BOSS HP: {int(max(0, boss_hp))}/{boss_max_hp}", FONT_HP, WHITE, WIDTH // 2, 85)
 
-        # --- ADD THIS FOR MOBILE UI DRAWING ---
+        # Mobile Slide Hint
         if control_type == 'MOBILE':
+            draw_text("SLIDE FINGER TO MOVE & FIRE", FONT_SMALL, (100, 120, 150), WIDTH // 2, HEIGHT - 20)
 
-            # Slider Bar
-
-            draw_text("SLIDE FINGER TO MOVE & FIRE", FONT_SMALL,(80,80,80), WIDTH // 2, HEIGHT - 30)
-
+        # Active Powerup Timers
         y_offset_sh = 80
         for s_key, s_val in skills.items():
             if s_val['active']:
                 rem_time = (s_val['timer'] - now) // 1000
                 if rem_time > 0:
-                    draw_text(f"{s_val['label']}: {rem_time}s", FONT_SMALL, s_val['color'], 20, y_offset_sh,
-                              False)
-                    y_offset_sh += 30
+                    pill_rect = pygame.Rect(15, y_offset_sh, 140, 28)
+                    draw_panel(screen, pill_rect, alpha=200, bg_color=(20, 25, 35), border_color=s_val['color'], border_width=2, border_radius=8)
+                    draw_text(f"{s_val['label']} {rem_time}s", FONT_SMALL, s_val['color'], pill_rect.centerx, pill_rect.centery)
+                    y_offset_sh += 34
                 else:
                     s_val['active'] = False
 
+        # Boss Spawning Condition
         if current_level >= 11:
             req_kills = 250
         else:
             boss_kill_reqs = {1: 50, 2: 100, 3: 100, 4: 150, 5: 150, 6: 200, 7: 200, 8: 200, 9: 200, 10: 200}
-            req_kills = boss_kill_reqs.get(current_level, 550)
+            req_kills = boss_kill_reqs.get(current_level, 200)
 
         if kill_count >= req_kills and not boss_active and not boss_arriving and boss_defeated_timer == 0:
             boss_arriving = True
@@ -1529,14 +1501,14 @@ while running:
         if boss_arriving:
             boss_warning_timer -= 1
             if (boss_warning_timer // 15) % 2 == 0:
-                draw_text("BOSS ARRIVING", FONT_TITLE, RED, WIDTH // 2, HEIGHT // 2)
+                draw_text("⚠ BOSS INCOMING ⚠", FONT_TITLE, RED, WIDTH // 2, HEIGHT // 2)
             if boss_warning_timer <= 0:
                 boss_arriving = False
                 boss_active = True
 
         if boss_defeated_timer > 0:
             boss_defeated_timer -= 1
-            draw_text("BOSS DEFEATED", FONT_TITLE, RED, WIDTH // 2, HEIGHT // 2)
+            draw_text("VICTORY! BOSS DEFEATED", FONT_TITLE, CYAN, WIDTH // 2, HEIGHT // 2)
             if boss_defeated_timer <= 0:
                 state = 4
                 if not win_snd_played:
@@ -1553,52 +1525,44 @@ while running:
     # PAUSE SCREEN (STATE 10)
     # ==========================
     elif state == 10:
-        # Background Overlay
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
+        overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        # Pause Box
-        box = pygame.Rect(200, 150, 400, 350)
-        pygame.draw.rect(screen, DARK_GRAY, box, border_radius=20)
-        pygame.draw.rect(screen, CYAN, box, width=3, border_radius=20)
-        draw_text("GAME PAUSED", FONT_MSG, YELLOW, 400, 210)
+        box = pygame.Rect(180, 140, 440, 360)
+        draw_panel(screen, box, alpha=240, border_color=CYAN)
+        draw_text("GAME PAUSED", FONT_TITLE, CYAN, 400, 190)
 
-        # --- Button Rects (Size: 150x60) ---
-        btn_menu = pygame.Rect(230, 280, 150, 60)
-        btn_resume = pygame.Rect(420, 280, 150, 60)
-        btn_settings = pygame.Rect(230, 370, 150, 60)
-        btn_restart = pygame.Rect(420, 370, 150, 60)
+        btn_resume = pygame.Rect(220, 250, 160, 55)
+        btn_restart = pygame.Rect(420, 250, 160, 55)
+        btn_settings = pygame.Rect(220, 330, 160, 55)
+        btn_menu = pygame.Rect(420, 330, 160, 55)
 
-        # Hover Check
-        is_h_m = btn_menu.collidepoint(m_p)
-        is_h_p = btn_resume.collidepoint(m_p)
-        is_h_s = btn_settings.collidepoint(m_p)
-        is_h_r = btn_restart.collidepoint(m_p)
+        mx, my = pygame.mouse.get_pos()
+        is_h_p = btn_resume.collidepoint(mx, my)
+        is_h_r = btn_restart.collidepoint(mx, my)
+        is_h_s = btn_settings.collidepoint(mx, my)
+        is_h_m = btn_menu.collidepoint(mx, my)
 
-        # Draw Buttons
-        pygame.draw.rect(screen, RED if not is_h_m else get_highlight(RED), btn_menu, border_radius=10)
-        pygame.draw.rect(screen, GREEN if not is_h_p else get_highlight(GREEN), btn_resume, border_radius=10)
-        pygame.draw.rect(screen, ORANGE if not is_h_s else get_highlight(ORANGE), btn_settings, border_radius=10)
-        pygame.draw.rect(screen, PURPLE if not is_h_r else get_highlight(PURPLE), btn_restart, border_radius=10)
+        draw_button(screen, "RESUME", FONT_UI, WHITE, btn_resume, GREEN, is_h_p)
+        draw_button(screen, "RESTART", FONT_UI, WHITE, btn_restart, ORANGE, is_h_r)
+        draw_button(screen, "SETTINGS", FONT_UI, WHITE, btn_settings, BLUE, is_h_s)
+        draw_button(screen, "MENU", FONT_UI, WHITE, btn_menu, RED, is_h_m)
 
-        # Button Texts
-        draw_text("MENU", FONT_UI, WHITE, 305, 310)
-        draw_text("RESUME", FONT_UI, WHITE, 495, 310)
-        draw_text("SETTINGS", FONT_UI, WHITE, 305, 400)
-        draw_text("RESTART", FONT_UI, WHITE, 495, 400)
-
-        # Click Logic FIXED
         if m_c:
             if is_h_p:
-                state = 3  # FIX: 4 se 3 kiya (Resume Game)
+                tap_snd.play()
+                state = 3
             elif is_h_s:
+                tap_snd.play()
                 settings_from_pause = True
-                state = 9  # FIX: 101 se 9 kiya (Settings)
+                state = 9
             elif is_h_m:
+                tap_snd.play()
                 warning_target = "MENU"
                 state = 15
             elif is_h_r:
+                tap_snd.play()
                 warning_target = "RESTART"
                 state = 15
 
@@ -1606,186 +1570,148 @@ while running:
     # WARNING SCREEN (STATE 15)
     # ==========================
     elif state == 15:
-        # Overlay
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 200))
         screen.blit(overlay, (0, 0))
 
-        # Warning Box (Bada aur chouda box)
-        w_box = pygame.Rect(100, 200, 600, 260)
-        pygame.draw.rect(screen, DARK_GRAY, w_box, border_radius=15)
-        pygame.draw.rect(screen, RED, w_box, width=3, border_radius=15)
+        w_box = pygame.Rect(120, 180, 560, 270)
+        draw_panel(screen, w_box, alpha=240, border_color=RED)
 
-        # Warning Text (Text 2 line mein break kiya hai)
-        draw_text("WARNING!", FONT_MSG, RED, 400, 240)
-        draw_text("If you quit or restart, you will lose", FONT_UI, WHITE, 400, 290)
-        draw_text("all coins earned in this level.", FONT_UI, WHITE, 400, 320)
+        draw_text("⚠ WARNING ⚠", FONT_MSG, RED, 400, 225)
+        draw_text("If you leave or restart now,", FONT_UI, WHITE, 400, 275)
+        draw_text("all coins earned in this level will be lost!", FONT_SMALL, YELLOW, 400, 310)
 
-        # Buttons - Left side Back, Right side OK
-        btn_w_back = pygame.Rect(200, 380, 160, 50)
-        btn_ok = pygame.Rect(440, 380, 160, 50)
+        btn_w_back = pygame.Rect(180, 360, 180, 50)
+        btn_ok = pygame.Rect(440, 360, 180, 50)
 
-        is_h_back = btn_w_back.collidepoint(m_p)
-        is_h_ok = btn_ok.collidepoint(m_p)
+        mx, my = pygame.mouse.get_pos()
+        is_h_back = btn_w_back.collidepoint(mx, my)
+        is_h_ok = btn_ok.collidepoint(mx, my)
 
-        pygame.draw.rect(screen, GREEN if not is_h_back else get_highlight(GREEN), btn_w_back, border_radius=10)
-        pygame.draw.rect(screen, RED if not is_h_ok else get_highlight(RED), btn_ok, border_radius=10)
+        draw_button(screen, "GO BACK", FONT_UI, WHITE, btn_w_back, GREEN, is_h_back)
+        draw_button(screen, "CONFIRM", FONT_UI, WHITE, btn_ok, RED, is_h_ok)
 
-        draw_text("BACK", FONT_UI, WHITE, 280, 405)
-        draw_text("OK", FONT_UI, WHITE, 520, 405)
-
-        # Click Logic FIXED
         if m_c:
             if is_h_back:
-                state = 10  # Wapas pause screen pe
+                tap_snd.play()
+                state = 10
             elif is_h_ok:
-                # Coins Loose Logic
+                tap_snd.play()
                 total_coins -= level_coins
-                level_coins = 0  # Reset level progress
+                level_coins = 0
 
                 if warning_target == "MENU":
                     save_game()
-                    state = 0  # Main Menu
+                    state = 0
                 elif warning_target == "RESTART":
-                    reset_level_logic(selected_level)  # FIX: yaha crash ho raha tha kyunki bracket khali tha
-                    state = 3  # FIX: 4 se 3 kiya taaki wapas game chal pade
+                    reset_level_logic(selected_level)
+                    state = 3
 
     # ==========================
     # WIN / LOSS (STATE 4 & 5)
     # ==========================
     elif state == 4 or state == 5:
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
 
-        box = pygame.Rect(150, 150, 500, 350)
-        pygame.draw.rect(screen, DARK_GRAY, box, border_radius=20)
-        draw_text("VICTORY" if state == 4 else "GAME OVER", FONT_MSG, GREEN if state == 4 else RED, 400, 200)
-        # --- STAR RATING SYSTEM START ---
-        # Logic: Agar kill_count 20 se jyada to 3 Star, 10 se jyada to 2 Star, warna 1 Star
-        if kill_count >= 20:
-            earned_stars = 3
-        elif kill_count >= 10:
-            earned_stars = 2
+        box = pygame.Rect(140, 120, 520, 400)
+        draw_panel(screen, box, alpha=240, border_color=GREEN if state == 4 else RED)
+
+        if state == 4:
+            draw_text("VICTORY!", FONT_TITLE, GREEN, 400, 175)
+            draw_text(f"+{level_coins} Coins Earned", FONT_UI, YELLOW, 400, 220)
         else:
-            earned_stars = 1
+            draw_text("MISSION FAILED", FONT_TITLE, RED, 400, 175)
+            draw_text("Ship Destroyed in Combat", FONT_UI, LIGHT_GRAY, 400, 220)
 
-        # Star image ko resize kar lete hain taaki pop-up mein fit aaye
-        star_icon = pygame.transform.scale(star_for_rating, (45, 45))
+        # Star Rating on Victory
+        if state == 4:
+            earned_stars = 3 if kill_count >= 20 else (2 if kill_count >= 10 else 1)
+            star_icon = pygame.transform.scale(star_for_rating, (46, 46))
+            start_x = 400 - ((earned_stars * 52) // 2) + 5
+            for i in range(earned_stars):
+                screen.blit(star_icon, (start_x + (i * 52), 255))
 
-        # Stars ko center mein draw karne ka math
-        # Agar 3 star hain, toh X start position piche khisakegi
-        start_x = 400 - ((earned_stars * 50) // 2) + 5
+        b_m = pygame.Rect(180, 330, 180, 55)
+        b_n = pygame.Rect(440, 330, 180, 55)
 
-        for i in range(earned_stars):
-            # Y=250 rakha hai taaki Title aur Buttons ke beech mein aaye
-            screen.blit(star_icon, (start_x + (i * 50), 245))
-            # --- STAR RATING SYSTEM END ---
-        b_m, b_n = pygame.Rect(180, 300, 180, 60), pygame.Rect(440, 300, 180, 60)
+        mx, my = pygame.mouse.get_pos()
+        is_h_m = b_m.collidepoint(mx, my)
+        is_h_n = b_n.collidepoint(mx, my)
 
-        is_h_m = b_m.collidepoint(m_p)
-        is_h_n = b_n.collidepoint(m_p)
-        pygame.draw.rect(screen, get_highlight(BLUE) if is_h_m else BLUE, b_m, border_radius=10)
-        pygame.draw.rect(screen, get_highlight(MAGENTA) if is_h_n else MAGENTA, b_n, border_radius=10)
+        draw_button(screen, "MAIN MENU", FONT_UI, WHITE, b_m, BLUE, is_h_m)
+        draw_button(screen, "NEXT LEVEL" if state == 4 else "RETRY", FONT_UI, WHITE, b_n, GREEN if state == 4 else ORANGE, is_h_n)
 
-        draw_text("MENU", FONT_UI, WHITE, 270, 330)
-        draw_text("NEXT LEVEL" if state == 4 else "RETRY", FONT_UI, WHITE, 530, 330)
-
-        # --- REVIVE SYSTEM START ---
-        if state == 5:  # Sirf Game Over hone par dikhao
+        # Revive System in Game Over
+        if state == 5:
             if not show_revive_confirm:
-                # Naya REVIVE Button (Green) - Iski position adjust ki hai box ke hisaab se
-                rev_b = pygame.Rect(310, 380, 180, 60)  # Beech mein thoda upar
-                is_h_rev = rev_b.collidepoint(m_p)
-
-                pygame.draw.rect(screen, get_highlight(GREEN) if is_h_rev else GREEN, rev_b, border_radius=10)
-                draw_text("REVIVE", FONT_UI, BLACK, x=400, y=410)  # Text ko button ke center mein rakha hai
+                rev_b = pygame.Rect(280, 415, 240, 55)
+                is_h_rev = rev_b.collidepoint(mx, my)
+                draw_button(screen, "⚡ REVIVE SHIP ⚡", FONT_UI, BLACK, rev_b, YELLOW, is_h_rev, outline_color=WHITE)
 
             elif show_revive_confirm:
-                # --- CONFIRM REVIVING POPUP ---
-                # Ye poore screen ke upar ek chhota box dikhayega
-                p_box = pygame.Rect(200, 250, 400, 180)
-                pygame.draw.rect(screen, (30, 30, 30), p_box, border_radius=15)
-                pygame.draw.rect(screen, WHITE, p_box, 2, border_radius=15)  # Border
+                p_box = pygame.Rect(160, 220, 480, 220)
+                draw_panel(screen, p_box, alpha=250, border_color=YELLOW)
 
-                draw_text("CONFIRM REVIVING?", FONT_MSG, WHITE, x=400, y=280)
-
+                draw_text("CONFIRM REVIVE?", FONT_MSG, YELLOW, 400, 260)
                 c_price = get_revive_price(current_level, revives_done_this_level)
+                draw_text(f"Restore full HP for {c_price} coins", FONT_SMALL, WHITE, 400, 310)
 
-                # Popup Buttons
-                b_back = pygame.Rect(220, 370, 100, 40)
-                b_buy = pygame.Rect(410, 370, 170, 40)
+                b_back = pygame.Rect(200, 360, 160, 45)
+                b_buy = pygame.Rect(420, 360, 180, 45)
 
-                # Back button draw
-                pygame.draw.rect(screen, RED, b_back, border_radius=8)
-                draw_text("BACK", FONT_UI, WHITE, x=270, y=390)
+                is_h_rbk = b_back.collidepoint(mx, my)
+                is_h_rbuy = b_buy.collidepoint(mx, my)
 
-                # Buy button draw (Total coins check karke color change)
-                btn_c = GREEN if total_coins >= c_price else (100, 100, 100)
-                pygame.draw.rect(screen, btn_c, b_buy, border_radius=8)
-                draw_text(f"{c_price} COINS", FONT_UI, BLACK, x=495, y=390)
-        # --- REVIVE SYSTEM END ---
+                draw_button(screen, "CANCEL", FONT_UI, WHITE, b_back, RED, is_h_rbk)
+                can_afford = total_coins >= c_price
+                draw_button(screen, f"{c_price} COINS", FONT_UI, BLACK if can_afford else WHITE, b_buy, GREEN if can_afford else DARK_GRAY, is_h_rbuy)
 
         if m_c:
-            # 1. Agar Revive Confirm Popup khula hai, toh sirf uske buttons kaam karenge
             if state == 5 and show_revive_confirm:
-                # BACK Button Click
-                if b_back.collidepoint(m_p):
+                if b_back.collidepoint(mx, my):
                     tap_snd.play()
                     show_revive_confirm = False
-
-                # X COINS (Buy) Button Click
-                elif b_buy.collidepoint(m_p):
+                elif b_buy.collidepoint(mx, my):
                     price = get_revive_price(current_level, revives_done_this_level)
                     if total_coins >= price:
-                       total_coins -= price
-                       revives_done_this_level += 1
+                        total_coins -= price
+                        revives_done_this_level += 1
+                        player_health = unlocked_hp
+                        revive_protection_timer = 180
+                        bullets.clear()
+                        fighters.clear()
+                        elites.clear()
+                        heavies.clear()
+                        enemy_bullets.clear()
 
-                       # 1. Player HP Full (Jitni max HP tumne set ki hai)
-                       player_health = unlocked_hp
+                        for _ in range(60):
+                            particles.append([player_rect.centerx, player_rect.centery, random.uniform(-10, 10), random.uniform(-10, 10), random.randint(6, 12), CYAN])
 
-                       # 2. Saamne ke Enemies aur Bullets Clear karo
-                       # Isse player ko "breathing space" milega
-                       revive_protection_timer = 180
-                       bullets.clear()
-                       fighters.clear()
-                       elites.clear()
-                       heavies.clear()
-                       # Agar dushman ki goliyaan (enemy_bullets) hain, toh unhe bhi clear kar do
-                       # enemy_bullets.clear()
+                        tap_snd.play()
+                        state = 3
+                        show_revive_confirm = False
 
-                       # 3. Ek bada blast effect (Optional but cool)
-                       # Taaki dikhe ki revive hone par ek power wave nikli hai
-                       for _ in range(50):
-                         p_speed_x = random.uniform(-10, 10)
-                         p_speed_y = random.uniform(-10, 10)
-                         particles.append(
-                            [player_rect.centerx, player_rect.centery, p_speed_x, p_speed_y, 8, (255, 255, 255)])
-
-                    state = 3  # Wapas game mein
-                    show_revive_confirm = False
-
-
-            # 2. Agar Popup nahi khula, toh normal buttons kaam karenge
             else:
-                # MENU Button
-                if b_m.collidepoint(m_p):
+                if is_h_m:
                     tap_snd.play()
                     level_coins = 0
+                    save_game()
                     state = 0
-
-                # NEXT LEVEL / RETRY Button
-                elif b_n.collidepoint(m_p):
-                    if state == 4 and current_level < 40:  # Victory Case
+                elif is_h_n:
+                    if state == 4 and current_level < 40:
                         level_coins = 0
                         selected_level = current_level + 1
                         reset_level_logic(selected_level)
+                        tap_snd.play()
                         state = 3
-                    elif state == 5:  # Game Over (Retry) Case
+                    elif state == 5:
                         level_coins = 0
                         reset_level_logic(selected_level)
                         tap_snd.play()
                         state = 3
-
-                # Naya REVIVE Button (Sirf Game Over state 5 mein)
-                elif state == 5 and rev_b.collidepoint(m_p):
+                elif state == 5 and not show_revive_confirm and rev_b.collidepoint(mx, my):
                     tap_snd.play()
                     show_revive_confirm = True
 
