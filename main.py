@@ -293,6 +293,7 @@ control_type = 'PC'
 show_settings_warning = False
 fire_cooldown = 0
 click_cooldown = 0
+ui_pulse_t = 0.0       # Global animation ticker for button glow effects
 music_vol = 0.5
 sfx_vol = 0.7
 is_dragging_music = False
@@ -659,6 +660,8 @@ while running:
     m_c = False
     m_u = False
 
+    ui_pulse_t += 0.05   # Drives hover glow pulsation across all UI
+
     if click_cooldown > 0:
         click_cooldown -= 1
 
@@ -753,38 +756,48 @@ while running:
     # MAIN MENU (STATE 0)
     # ==========================
     elif state == 0:
+        # Background + animated starfield
         screen.blit(menu_bg, (0, 0))
-        
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 100))
+        overlay.fill((0, 0, 20, 165))
         screen.blit(overlay, (0, 0))
-        
-        draw_text("CRAZYY SIMULATION", FONT_TITLE, CYAN, 400, 80)
-        
-        coin_bg = pygame.Rect(320, 140, 160, 40)
-        pygame.draw.rect(screen, (20, 20, 30, 180), coin_bg, border_radius=20)
-        pygame.draw.rect(screen, YELLOW, coin_bg, width=2, border_radius=20)
-        screen.blit(coin_icon, (330, 140))
-        draw_text(f"{total_coins}", FONT_UI, YELLOW, x = 410, y = 158)
-
-        menu_btns = [
-            ("MISSIONS", BLUE, 220, STATE_ENV_SELECT),
-            ("STORE", MAGENTA, 310, 6),
-            ("SETTINGS", ORANGE, 400, 9),
-            ("QUIT", RED, 490, 0)
-        ]
+        draw_menu_starfield(screen)
 
         mx, my = pygame.mouse.get_pos()
 
-        for txt, col, y, target in menu_btns:
-            btn_rect = pygame.Rect(270, y, 260, 70)
-            is_hover = btn_rect.collidepoint(mx, my)
-            draw_button(screen, txt, FONT_UI, WHITE, btn_rect, col, is_hover, outline_color=CYAN)
+        # ---- TITLE ----
+        title_glow = FONT_TITLE.render("CRAZYY SIMULATION", True, NEON_CYAN)
+        glow_surf = pygame.Surface(title_glow.get_size(), pygame.SRCALPHA)
+        glow_surf.blit(title_glow, (0, 0))
+        glow_surf.set_alpha(int(60 + 30 * math.sin(ui_pulse_t * 2)))
+        screen.blit(glow_surf, title_glow.get_rect(center=(401, 86)))
+        draw_text_shadow("CRAZYY SIMULATION", FONT_TITLE, NEON_CYAN, 400, 84, shadow_color=(0, 80, 120), offset=3)
+        draw_text("GALAXY WARFARE  ·  SURVIVAL EDITION", FONT_TINY, (80, 130, 180), 400, 120)
 
+        # ---- COIN BADGE (top center) ----
+        coin_panel = pygame.Rect(318, 138, 164, 36)
+        pygame.draw.rect(screen, (14, 16, 28), coin_panel, border_radius=18)
+        pygame.draw.rect(screen, NEON_GOLD, coin_panel, width=1, border_radius=18)
+        screen.blit(coin_icon, (326, 130))
+        draw_text(str(total_coins), FONT_UI, NEON_GOLD, 395, 156)
+
+        # ---- MENU BUTTONS ----
+        menu_btns = [
+            ("🚀  MISSIONS",  NEON_BLUE,    210, STATE_ENV_SELECT),
+            ("🛒  STORE",     (140, 40, 200), 282, 6),
+            ("⚙   SETTINGS", NEON_ORANGE,   354, 9),
+            ("✕  QUIT",      NEON_PINK,      426, 0),
+        ]
+
+        for txt, col, y, target in menu_btns:
+            btn_rect = pygame.Rect(250, y, 300, 62)
+            is_hover = btn_rect.collidepoint(mx, my)
+            draw_glowing_button(screen, txt, FONT_UI, WHITE, btn_rect, col, is_hover,
+                                border_radius=16, accent=NEON_CYAN, pulse_t=ui_pulse_t)
             if m_c and is_hover:
-                if txt == "QUIT":
+                if txt.endswith("QUIT"):
                     running = False
-                elif (txt == "MISSIONS" or txt == "STORE") and control_type is None:
+                elif ("MISSIONS" in txt or "STORE" in txt) and control_type is None:
                     tap_snd.play()
                     win_snd_played = False
                     loose_snd_played = False
@@ -797,27 +810,30 @@ while running:
                     click_cooldown = 12
                     m_c = False
 
-        # WARNING POPUP DRAWING
+        # ---- VERSION TAG ----
+        draw_text("v2.0  |  @iambkram", FONT_TINY, (50, 70, 100), 400, 583)
+
+        # ---- CONTROL CONFIGURATION WARNING POPUP ----
         if show_settings_warning:
-            overlay_w = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            overlay_w.fill((0, 0, 0, 210))
-            screen.blit(overlay_w, (0, 0))
+            ovl = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            ovl.fill((0, 0, 0, 200))
+            screen.blit(ovl, (0, 0))
 
-            warn_rect = pygame.Rect(140, 170, 520, 260)
-            draw_panel(screen, warn_rect, alpha=250, bg_color=(20, 25, 35), border_color=CYAN, border_width=3, border_radius=20)
+            warn_rect = pygame.Rect(130, 160, 540, 280)
+            draw_neon_panel(screen, warn_rect, accent=NEON_CYAN, alpha=248, border_radius=20)
 
-            draw_text("CONTROL CONFIGURATION", FONT_MODAL_TITLE, CYAN, 400, 215)
-            draw_text("Select your preferred device in Settings.", FONT_SMALL, WHITE, 400, 265)
-            draw_text("Defaulting to PC (WASD + Space auto-fire).", FONT_SMALL, YELLOW, 400, 295)
+            draw_text("⚙  CONTROL SETUP", FONT_MODAL_TITLE, NEON_CYAN, 400, 210)
+            draw_divider(screen, 170, 235, 630, NEON_CYAN, alpha=50)
+            draw_text("Choose your control scheme in Settings.", FONT_SMALL, WHITE, 400, 265)
+            draw_text("Defaulting to PC: WASD + Space auto-fire", FONT_SMALL, NEON_GOLD, 400, 293)
 
-            btn_set = pygame.Rect(170, 345, 210, 50)
-            btn_ok = pygame.Rect(420, 345, 210, 50)
-
+            btn_set = pygame.Rect(165, 355, 210, 52)
+            btn_ok  = pygame.Rect(425, 355, 210, 52)
             is_h_set = btn_set.collidepoint(mx, my)
-            is_h_ok = btn_ok.collidepoint(mx, my)
+            is_h_ok  = btn_ok.collidepoint(mx, my)
 
-            draw_button(screen, "SETTINGS", FONT_UI, WHITE, btn_set, ORANGE, is_h_set)
-            draw_button(screen, "CONTINUE (PC)", FONT_UI, WHITE, btn_ok, GREEN, is_h_ok)
+            draw_glowing_button(screen, "SETTINGS", FONT_UI, WHITE, btn_set, NEON_ORANGE, is_h_set, pulse_t=ui_pulse_t)
+            draw_glowing_button(screen, "CONTINUE (PC)", FONT_UI, WHITE, btn_ok, NEON_GREEN, is_h_ok, pulse_t=ui_pulse_t)
 
             if m_c:
                 if is_h_set:
@@ -835,76 +851,90 @@ while running:
 
 
     # ==========================
-    # 🔥 1. SELECT ENVIRONMENT (NEW STATE 20) 🔥
+    # SELECT ENVIRONMENT (STATE 20)
     # ==========================
     elif state == STATE_ENV_SELECT:
+        screen.blit(menu_bg, (0, 0))
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 220))
+        overlay.fill((0, 0, 20, 190))
         screen.blit(overlay, (0, 0))
-
-        draw_text("SELECT ENVIRONMENT", FONT_TITLE, CYAN, 400, 80)
+        draw_menu_starfield(screen)
 
         mx, my = pygame.mouse.get_pos()
 
-        btn_env1 = pygame.Rect(100, 180, 280, 160)
-        btn_env2 = pygame.Rect(420, 180, 280, 160)
-        btn_env3 = pygame.Rect(260, 360, 280, 160)
+        draw_text_shadow("SELECT ENVIRONMENT", FONT_MSG, NEON_CYAN, 400, 52, shadow_color=(0,80,120), offset=2)
+        draw_text("Choose your combat zone", FONT_TINY, (80, 130, 180), 400, 82)
+        draw_divider(screen, 80, 98, 720, NEON_CYAN, alpha=40)
 
-        is_h_e1 = btn_env1.collidepoint(mx, my)
-        is_h_e2 = btn_env2.collidepoint(mx, my) and env2_unlocked
-        is_h_e3 = btn_env3.collidepoint(mx, my) and env3_unlocked
+        # --- Environment Card Data ---
+        envs = [
+            (1, "🌌  GALAXY",      "Stellar battlefields",   "(0, 60, 140)",    NEON_BLUE,   env1_unlocked),
+            (2, "🌫  NEBULA",      "Purple gas clouds",      "(80, 30, 120)",   NEON_PURPLE, env2_unlocked),
+            (3, "⚫  BLACK HOLE",  "Gravitational singularity", "(120, 20, 40)", NEON_PINK,   env3_unlocked),
+        ]
 
-        env_col_1 = (0, 80, 200)
-        env_col_2 = (150, 40, 200) if env2_unlocked else (50, 50, 50)
-        env_col_3 = (200, 40, 40) if env3_unlocked else (50, 50, 50)
+        card_y_positions = [118, 248, 378]
 
-        draw_button(screen, "", FONT_UI, WHITE, btn_env1, env_col_1, is_h_e1, outline_color=GREEN if current_selected_env == 1 else CYAN)
-        draw_button(screen, "", FONT_UI, WHITE, btn_env2, env_col_2, is_h_e2, outline_color=GREEN if current_selected_env == 2 else CYAN)
-        draw_button(screen, "", FONT_UI, WHITE, btn_env3, env_col_3, is_h_e3, outline_color=GREEN if current_selected_env == 3 else CYAN)
+        for idx, (env_id, name, subtitle, _, accent, unlocked) in enumerate(envs):
+            card = pygame.Rect(80, card_y_positions[idx], 640, 112)
+            is_selected = (current_selected_env == env_id)
+            is_hover    = card.collidepoint(mx, my) and unlocked
 
-        draw_text("GALAXY", FONT_UI, WHITE, btn_env1.centerx, btn_env1.centery - 20)
-        draw_text("40 Levels", FONT_SMALL, CYAN, btn_env1.centerx, btn_env1.centery + 20)
+            # Card background
+            bg_col = PANEL_MID if unlocked else PANEL_DARK
+            draw_neon_panel(screen, card, accent=accent if unlocked else MID_GRAY,
+                            alpha=230, border_radius=16, border_width=2 if not is_selected else 3, bg=bg_col)
 
-        t_col2 = WHITE if env2_unlocked else LIGHT_GRAY
-        draw_text("NEBULA", FONT_UI, t_col2, btn_env2.centerx, btn_env2.centery - 20)
-        draw_text("Unlocked" if env2_unlocked else "Locked", FONT_SMALL, CYAN if env2_unlocked else RED, btn_env2.centerx, btn_env2.centery + 20)
+            # Pulsing selected border
+            if is_selected:
+                pulse_alpha = int(100 + 80 * math.sin(ui_pulse_t * 3))
+                pulse_surf = pygame.Surface((card.width + 12, card.height + 12), pygame.SRCALPHA)
+                pygame.draw.rect(pulse_surf, (*accent, pulse_alpha), pulse_surf.get_rect(), border_radius=20, width=2)
+                screen.blit(pulse_surf, (card.x - 6, card.y - 6))
 
-        t_col3 = WHITE if env3_unlocked else LIGHT_GRAY
-        draw_text("BLACKHOLE", FONT_UI, t_col3, btn_env3.centerx, btn_env3.centery - 20)
-        draw_text("Unlocked" if env3_unlocked else "Locked", FONT_SMALL, CYAN if env3_unlocked else RED, btn_env3.centerx, btn_env3.centery + 20)
+            # Environment name
+            col = WHITE if unlocked else MID_GRAY
+            draw_text(name, FONT_HUD, col, card.x + 220, card.centery - 16, center=False)
+            draw_text(subtitle, FONT_TINY, accent if unlocked else (60, 65, 80), card.x + 222, card.centery + 12, center=False)
 
-        if not env2_unlocked: screen.blit(lock_icon, (btn_env2.centerx - 45, btn_env2.centery - 45))
-        if not env3_unlocked: screen.blit(lock_icon, (btn_env3.centerx - 45, btn_env3.centery - 45))
+            # Status badge
+            if not unlocked:
+                draw_badge(screen, "🔒  LOCKED", FONT_TINY, card.right - 80, card.centery, bg_color=(50, 20, 20), text_color=RED, border_color=RED)
+            elif is_selected:
+                draw_badge(screen, "✔  SELECTED", FONT_TINY, card.right - 82, card.centery, bg_color=(20, 50, 30), text_color=NEON_GREEN, border_color=NEON_GREEN)
+            else:
+                draw_badge(screen, "40 LEVELS", FONT_TINY, card.right - 68, card.centery, bg_color=PANEL_BG, text_color=NEON_CYAN, border_color=NEON_CYAN)
 
-        # --- BACK BUTTON ---
-        btn_back = pygame.Rect(270, 535, 260, 50)
+            # Lock icon overlay for locked
+            if not unlocked:
+                lock_sm = pygame.transform.scale(lock_icon, (52, 52))
+                screen.blit(lock_sm, (card.x + 20, card.centery - 26))
+            else:
+                # Small env color swatch
+                swatch_rect = pygame.Rect(card.x + 20, card.centery - 28, 56, 56)
+                pygame.draw.rect(screen, (10, 20, 40), swatch_rect, border_radius=12)
+                pygame.draw.rect(screen, accent, swatch_rect, width=2, border_radius=12)
+                draw_text(name[0:2], FONT_UI, accent, swatch_rect.centerx, swatch_rect.centery)
+
+            # Click logic
+            if m_c and is_hover:
+                tap_snd.play()
+                current_selected_env = env_id
+                state = STATE_LEVEL_SELECT
+                click_cooldown = 12
+                m_c = False
+
+        # Back button
+        btn_back = pygame.Rect(260, 504, 280, 54)
         is_h_back = btn_back.collidepoint(mx, my)
-        draw_button(screen, "BACK TO MENU", FONT_UI, WHITE, btn_back, RED, is_h_back)
+        draw_glowing_button(screen, "← BACK TO MENU", FONT_UI, WHITE, btn_back, NEON_PINK, is_h_back,
+                            border_radius=16, accent=RED, pulse_t=ui_pulse_t)
+        if m_c and is_h_back:
+            tap_snd.play()
+            state = 0
+            click_cooldown = 12
+            m_c = False
 
-        if m_c:
-            if is_h_e1:
-                tap_snd.play()
-                current_selected_env = 1
-                state = STATE_LEVEL_SELECT
-                click_cooldown = 12
-                m_c = False
-            elif is_h_e2:
-                tap_snd.play()
-                current_selected_env = 2
-                state = STATE_LEVEL_SELECT
-                click_cooldown = 12
-                m_c = False
-            elif is_h_e3:
-                tap_snd.play()
-                current_selected_env = 3
-                state = STATE_LEVEL_SELECT
-                click_cooldown = 12
-                m_c = False
-            elif is_h_back:
-                tap_snd.play()
-                state = 0
-                click_cooldown = 12
-                m_c = False
 
     # ==========================
     # SETTINGS MENU (STATE 9, 11, 12)
@@ -912,71 +942,89 @@ while running:
     elif state == 9:
         screen.blit(menu_bg, (0, 0))
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
+        overlay.fill((0, 0, 20, 190))
         screen.blit(overlay, (0, 0))
-        
-        draw_text("GAME SETTINGS", FONT_TITLE, CYAN, 400, 60)
+        draw_menu_starfield(screen)
 
-        # Device Selection Cards
-        btn_mob = pygame.Rect(150, 140, 200, 100)
-        btn_pc = pygame.Rect(450, 140, 200, 100)
-        
         mx, my = pygame.mouse.get_pos()
         m_down = pygame.mouse.get_pressed()[0]
-        
+
+        draw_text_shadow("GAME SETTINGS", FONT_MSG, NEON_CYAN, 400, 50, shadow_color=(0,80,120), offset=2)
+        draw_divider(screen, 80, 78, 720, NEON_CYAN, alpha=40)
+
+        # --- Device Selection Cards ---
+        mob_active = control_type == 'MOBILE'
+        pc_active  = control_type == 'PC'
+
+        btn_mob = pygame.Rect(80,  110, 280, 130)
+        btn_pc  = pygame.Rect(440, 110, 280, 130)
+
         is_h_mob = btn_mob.collidepoint(mx, my)
-        is_h_pc = btn_pc.collidepoint(mx, my)
+        is_h_pc  = btn_pc.collidepoint(mx, my)
 
-        draw_button(screen, "", FONT_UI, WHITE, btn_mob, (30, 80, 150) if control_type != 'MOBILE' else (0, 200, 255), is_h_mob)
-        draw_text("MOBILE", FONT_UI, WHITE, 250, 175)
-        draw_text("CONTROL", FONT_SMALL, CYAN if control_type == 'MOBILE' else LIGHT_GRAY, 250, 205)
+        mob_accent = NEON_CYAN if mob_active else MID_GRAY
+        pc_accent  = NEON_CYAN if pc_active  else MID_GRAY
 
-        draw_button(screen, "", FONT_UI, WHITE, btn_pc, (150, 30, 80) if control_type != 'PC' else (0, 200, 255), is_h_pc)
-        draw_text("PC", FONT_UI, WHITE, 550, 175)
-        draw_text("CONTROL", FONT_SMALL, CYAN if control_type == 'PC' else LIGHT_GRAY, 550, 205)
+        draw_neon_panel(screen, btn_mob, accent=mob_accent, alpha=230, border_radius=16, border_width=3 if mob_active else 1, bg=PANEL_MID)
+        draw_neon_panel(screen, btn_pc,  accent=pc_accent,  alpha=230, border_radius=16, border_width=3 if pc_active  else 1, bg=PANEL_MID)
 
-        # --- SLIDERS LOGIC ---
-        slider_y_pos = [320, 420]
-        slider_labels = ["MUSIC VOLUME", "SOUND EFFECTS"]
-        current_vols = [music_vol, sfx_vol]
+        if mob_active:
+            pulse_a = int(100 + 80 * math.sin(ui_pulse_t * 3))
+            ps = pygame.Surface((btn_mob.width+12, btn_mob.height+12), pygame.SRCALPHA)
+            pygame.draw.rect(ps, (*NEON_CYAN, pulse_a), ps.get_rect(), border_radius=20, width=2)
+            screen.blit(ps, (btn_mob.x-6, btn_mob.y-6))
+        if pc_active:
+            pulse_a = int(100 + 80 * math.sin(ui_pulse_t * 3))
+            ps = pygame.Surface((btn_pc.width+12, btn_pc.height+12), pygame.SRCALPHA)
+            pygame.draw.rect(ps, (*NEON_CYAN, pulse_a), ps.get_rect(), border_radius=20, width=2)
+            screen.blit(ps, (btn_pc.x-6, btn_pc.y-6))
+
+        draw_text("📱  MOBILE", FONT_UI, WHITE if mob_active else LIGHT_GRAY, btn_mob.centerx, btn_mob.centery - 14)
+        draw_text("Touch Controls", FONT_TINY, mob_accent, btn_mob.centerx, btn_mob.centery + 14)
+        if mob_active:
+            draw_badge(screen, "ACTIVE", FONT_TINY, btn_mob.centerx, btn_mob.bottom - 22, bg_color=(20,60,40), text_color=NEON_GREEN, border_color=NEON_GREEN)
+
+        draw_text("🖥  PC / DESKTOP", FONT_UI, WHITE if pc_active else LIGHT_GRAY, btn_pc.centerx, btn_pc.centery - 14)
+        draw_text("WASD + Space", FONT_TINY, pc_accent, btn_pc.centerx, btn_pc.centery + 14)
+        if pc_active:
+            draw_badge(screen, "ACTIVE", FONT_TINY, btn_pc.centerx, btn_pc.bottom - 22, bg_color=(20,60,40), text_color=NEON_GREEN, border_color=NEON_GREEN)
+
+        # --- Volume Sliders ---
+        slider_y_pos   = [315, 415]
+        slider_labels  = ["🎵  MUSIC VOLUME", "🔊  SOUND EFFECTS"]
+        slider_colors  = [NEON_CYAN, NEON_ORANGE]
+        current_vols   = [music_vol, sfx_vol]
 
         for i in range(2):
-            draw_text(slider_labels[i], FONT_SMALL, WHITE, 400, slider_y_pos[i] - 30)
-            s_rect = pygame.Rect(200, slider_y_pos[i], 400, 20)  # Thinner, sleeker bar
-            pygame.draw.rect(screen, (30, 30, 40), s_rect, border_radius=10)
+            draw_text(slider_labels[i], FONT_SMALL, WHITE, 400, slider_y_pos[i] - 26)
+            s_rect = pygame.Rect(160, slider_y_pos[i], 480, 24)
+            draw_gradient_bar(screen, s_rect, current_vols[i],
+                              color_low=(40, 40, 60), color_high=slider_colors[i],
+                              bg_color=(20, 22, 35), border_radius=12, border_color=(50,55,80))
 
-            # Gradient/Neon Fill bar
-            fill_w = int(current_vols[i] * 400)
-            if fill_w > 0:
-                pygame.draw.rect(screen, CYAN, (200, slider_y_pos[i], fill_w, 20), border_radius=10)
+            pct_txt = f"{int(current_vols[i] * 100)}%"
+            draw_text(pct_txt, FONT_TINY, WHITE, 400, slider_y_pos[i] + 12)
 
-            # Percentage text
-            draw_text(f"{int(current_vols[i] * 100)}%", FONT_SMALL, WHITE if fill_w < 200 else BLACK, 400, slider_y_pos[i] + 10)
+            # Handle
+            handle_x = 160 + int(current_vols[i] * 480)
+            pygame.draw.circle(screen, (230, 230, 255), (handle_x, slider_y_pos[i] + 12), 14)
+            pygame.draw.circle(screen, slider_colors[i], (handle_x, slider_y_pos[i] + 12), 8)
 
-            # Modern Slider Handle
-            handle_x = 200 + fill_w
-            pygame.draw.circle(screen, WHITE, (handle_x, slider_y_pos[i] + 10), 12)
-            pygame.draw.circle(screen, CYAN, (handle_x, slider_y_pos[i] + 10), 6)
-
-            # Interaction
-            if m_down and s_rect.inflate(20, 40).collidepoint(mx, my):
-                new_val = max(0, min(1, (mx - 200) / 400))
+            if m_down and s_rect.inflate(24, 48).collidepoint(mx, my):
+                new_val = max(0.0, min(1.0, (mx - 160) / 480))
                 if i == 0:
                     music_vol = new_val
                     pygame.mixer.music.set_volume(music_vol)
                 else:
                     sfx_vol = new_val
-                    shoot_snd.set_volume(sfx_vol)
-                    game_won_snd.set_volume(sfx_vol)
-                    game_loose_snd.set_volume(sfx_vol)
-                    tap_snd.set_volume(sfx_vol)
-                    boss_expl_snd.set_volume(sfx_vol)
-                    expl_snd.set_volume(sfx_vol)
-                    hit_snd.set_volume(sfx_vol)
+                    for snd in [shoot_snd, game_won_snd, game_loose_snd, tap_snd, boss_expl_snd, expl_snd, hit_snd]:
+                        snd.set_volume(sfx_vol)
 
-        btn_back = pygame.Rect(325, 520, 150, 50)
+        # Save & Back
+        btn_back = pygame.Rect(265, 510, 270, 56)
         is_h_back = btn_back.collidepoint(mx, my)
-        draw_button(screen, "BACK", FONT_UI, WHITE, btn_back, RED, is_h_back)
+        draw_glowing_button(screen, "SAVE & BACK", FONT_UI, WHITE, btn_back, NEON_PINK, is_h_back,
+                            border_radius=16, accent=RED, pulse_t=ui_pulse_t)
 
         if m_c:
             if is_h_mob:
@@ -1010,29 +1058,38 @@ while running:
     elif state == 11:
         screen.blit(menu_bg, (0, 0))
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))
+        overlay.fill((0, 0, 20, 190))
         screen.blit(overlay, (0, 0))
+        draw_menu_starfield(screen)
 
-        info_box = pygame.Rect(100, 80, 600, 440)
-        draw_panel(screen, info_box, alpha=245, border_color=MAGENTA, border_width=3, border_radius=20)
+        info_box = pygame.Rect(90, 65, 620, 470)
+        draw_neon_panel(screen, info_box, accent=NEON_BLUE, alpha=248, border_radius=20)
 
-        draw_text("PC FLIGHT COMMANDS", FONT_MSG, CYAN, 400, 125)
+        draw_text_shadow("PC FLIGHT COMMANDS", FONT_MSG, NEON_CYAN, 400, 112, shadow_color=(0,60,120), offset=2)
+        draw_divider(screen, 120, 138, 680, NEON_CYAN, alpha=40)
 
         instructions = [
-            ("• Flight Navigation:", "Use [W, A, S, D] or [Arrow Keys] for 2D maneuvering & dodging."),
-            ("• Weapons Barrage:", "Hold [SPACEBAR] or [Left Mouse Button] for rapid auto-fire."),
-            ("• Tactical Powerups:", "Collect [S] for Energy Shield & [2X] for Dual Laser Spread."),
-            ("• Singularity Hazard:", "In Black Hole environments, resist gravitational pull with thrusters!")
+            ("🕹  Flight Navigation",  "Use [W A S D] or Arrow Keys for 2D maneuvering & dodging."),
+            ("🔫  Weapons Barrage",    "Hold [SPACEBAR] or Left Mouse Button for rapid auto-fire."),
+            ("⚡  Tactical Powerups",  "Collect glowing [S] Shield & [2X] Dual Laser orbs mid-flight."),
+            ("⚫  Singularity Hazard", "In Black Hole mode, resist gravity with fast thruster bursts!"),
         ]
 
         for idx, (head, body) in enumerate(instructions):
-            draw_text(head, FONT_SMALL, YELLOW, 400, 180 + idx * 60)
-            draw_text(body, FONT_SMALL, WHITE, 400, 205 + idx * 60)
+            row_y = 165 + idx * 68
+            row_rect = pygame.Rect(110, row_y, 580, 56)
+            pygame.draw.rect(screen, PANEL_MID, row_rect, border_radius=10)
+            pygame.draw.rect(screen, (40, 60, 100), row_rect, width=1, border_radius=10)
+            # Left accent bar
+            pygame.draw.rect(screen, NEON_BLUE, pygame.Rect(110, row_y + 8, 3, 40), border_radius=2)
+            draw_text(head, FONT_SMALL, NEON_GOLD, 400, row_y + 18)
+            draw_text(body, FONT_SMALL, LIGHT_GRAY, 400, row_y + 40)
 
         mx, my = pygame.mouse.get_pos()
-        btn_ok = pygame.Rect(300, 435, 200, 50)
+        btn_ok = pygame.Rect(270, 450, 260, 54)
         is_h_ok = btn_ok.collidepoint(mx, my)
-        draw_button(screen, "GOT IT", FONT_UI, WHITE, btn_ok, GREEN, is_h_ok)
+        draw_glowing_button(screen, "✔  GOT IT!", FONT_UI, WHITE, btn_ok, NEON_GREEN, is_h_ok,
+                            border_radius=16, accent=GREEN, pulse_t=ui_pulse_t)
 
         if m_c and is_h_ok:
             tap_snd.play()
@@ -1046,29 +1103,37 @@ while running:
     elif state == 12:
         screen.blit(menu_bg, (0, 0))
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))
+        overlay.fill((0, 0, 20, 190))
         screen.blit(overlay, (0, 0))
+        draw_menu_starfield(screen)
 
-        info_box = pygame.Rect(100, 80, 600, 440)
-        draw_panel(screen, info_box, alpha=245, border_color=BLUE, border_width=3, border_radius=20)
+        info_box = pygame.Rect(90, 65, 620, 470)
+        draw_neon_panel(screen, info_box, accent=NEON_CYAN, alpha=248, border_radius=20)
 
-        draw_text("MOBILE TOUCH COMMANDS", FONT_MSG, CYAN, 400, 125)
+        draw_text_shadow("MOBILE TOUCH COMMANDS", FONT_MSG, NEON_CYAN, 400, 112, shadow_color=(0,60,120), offset=2)
+        draw_divider(screen, 120, 138, 680, NEON_CYAN, alpha=40)
 
         m_instructions = [
-            ("• Touch Navigation:", "Slide your finger anywhere on screen to smoothly glide your ship."),
-            ("• Auto-Firing:", "Pulse laser cannons automatically fire while touching the screen."),
-            ("• Tactical Powerups:", "Touch [S] Shield and [2X] Double Shot floating energy orbs."),
-            ("• Singularity Hazard:", "Steer away from the black hole singularity to resist collapse!")
+            ("👆  Touch Navigation",    "Slide your finger anywhere to smoothly glide your starship."),
+            ("🔫  Auto-Firing",         "Cannons fire automatically while your finger is on the screen."),
+            ("⚡  Tactical Powerups",   "Tap glowing [S] Shield & [2X] Double Shot orbs to collect them."),
+            ("⚫  Singularity Hazard",  "Always keep sliding — Black Hole pulls you continuously inward!"),
         ]
 
         for idx, (head, body) in enumerate(m_instructions):
-            draw_text(head, FONT_SMALL, YELLOW, 400, 180 + idx * 60)
-            draw_text(body, FONT_SMALL, WHITE, 400, 205 + idx * 60)
+            row_y = 165 + idx * 68
+            row_rect = pygame.Rect(110, row_y, 580, 56)
+            pygame.draw.rect(screen, PANEL_MID, row_rect, border_radius=10)
+            pygame.draw.rect(screen, (30, 70, 80), row_rect, width=1, border_radius=10)
+            pygame.draw.rect(screen, NEON_CYAN, pygame.Rect(110, row_y + 8, 3, 40), border_radius=2)
+            draw_text(head, FONT_SMALL, NEON_GOLD, 400, row_y + 18)
+            draw_text(body, FONT_SMALL, LIGHT_GRAY, 400, row_y + 40)
 
         mx, my = pygame.mouse.get_pos()
-        btn_ok = pygame.Rect(300, 435, 200, 50)
+        btn_ok = pygame.Rect(270, 450, 260, 54)
         is_h_ok = btn_ok.collidepoint(mx, my)
-        draw_button(screen, "GOT IT", FONT_UI, WHITE, btn_ok, GREEN, is_h_ok)
+        draw_glowing_button(screen, "✔  GOT IT!", FONT_UI, WHITE, btn_ok, NEON_GREEN, is_h_ok,
+                            border_radius=16, accent=GREEN, pulse_t=ui_pulse_t)
 
         if m_c and is_h_ok:
             tap_snd.play()
@@ -1079,7 +1144,8 @@ while running:
     # ==========================
     # MISSIONS / LEVEL SELECT (STATE 1)
     # ==========================
-    elif state == STATE_LEVEL_SELECT:  # Yaani state == 1
+    elif state == STATE_LEVEL_SELECT:
+        # Draw environment background
         if current_selected_env == 1:
             screen.blit(galaxy_bg, (0, 0))
         elif current_selected_env == 2:
@@ -1088,17 +1154,23 @@ while running:
             screen.blit(blackhole_bg, (0, 0))
 
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
+        overlay.fill((0, 0, 0, 165))
         screen.blit(overlay, (0, 0))
-
-        draw_text("MISSIONS", FONT_TITLE, CYAN, 400, 60)
-
-        box_rect = pygame.Rect(120, 120, 560, 360)
-        draw_panel(screen, box_rect, alpha=200, border_color=MAGENTA)
 
         mx, my = pygame.mouse.get_pos()
         m_down = pygame.mouse.get_pressed()[0]
 
+        # Header
+        env_label = {1: "🌌 GALAXY", 2: "🌫 NEBULA", 3: "⚫ BLACK HOLE"}[current_selected_env]
+        env_acc   = {1: NEON_BLUE, 2: NEON_PURPLE, 3: NEON_PINK}[current_selected_env]
+        draw_text_shadow("MISSIONS", FONT_MSG, NEON_CYAN, 400, 40, shadow_color=(0,60,120), offset=2)
+        draw_badge(screen, env_label, FONT_TINY, 400, 72, bg_color=PANEL_MID, text_color=env_acc, border_color=env_acc)
+
+        # Scrollable grid panel
+        box_rect = pygame.Rect(110, 100, 580, 378)
+        draw_neon_panel(screen, box_rect, accent=env_acc, alpha=210, border_radius=16, border_width=2, bg=PANEL_BG)
+
+        # Drag / scroll
         if m_down and box_rect.collidepoint(mx, my):
             if not is_dragging_missions:
                 is_dragging_missions = True
@@ -1116,30 +1188,71 @@ while running:
                 is_dragging_missions = False
 
         level_scroll_y = max(-850, min(0, level_scroll_y))
-        screen.set_clip(box_rect.inflate(-10, -10))
+        screen.set_clip(box_rect.inflate(-8, -8))
 
-        env_max = 40  # Temporarily fully unlocked for all envs
+        env_max = 40
         clicked_level = None
-        
-        for i in range(1, 41):
-            lx = 150 + ((i - 1) % 5) * 100
-            ly = 140 + ((i - 1) // 5) * 100 + level_scroll_y
 
-            lvl_rect = pygame.Rect(lx, ly, 80, 80)
+        for i in range(1, 41):
+            col_i = (i - 1) % 5
+            row_i = (i - 1) // 5
+            lx = 138 + col_i * 104
+            ly = 128 + row_i * 96 + level_scroll_y
+
+            node_r = 36  # radius
+            cx, cy = lx + node_r, ly + node_r
+            lvl_rect = pygame.Rect(lx, ly, node_r*2, node_r*2)
             is_u = i <= env_max
+            in_view = 100 < ly < 478
             is_h = False
-            
-            if 100 < ly < 480:
+
+            if in_view:
                 is_h = lvl_rect.collidepoint(mx, my) and is_u and box_rect.collidepoint(mx, my)
 
-                # Modern Node button
-                draw_button(screen, str(i), FONT_TITLE, WHITE if is_u else LIGHT_GRAY, lvl_rect, BLUE if is_u else (30, 30, 30), is_h, border_radius=20, outline_color=CYAN)
+                # Node fill
+                if not is_u:
+                    node_col = PANEL_DARK
+                    border_col = MID_GRAY
+                elif i == selected_level:
+                    node_col = (20, 50, 30)
+                    border_col = NEON_GREEN
+                elif is_h:
+                    node_col = get_highlight(env_acc if is_u else DARK_GRAY)
+                    border_col = NEON_CYAN
+                else:
+                    node_col = PANEL_MID
+                    border_col = env_acc
 
-                # Only register selection on clean tap release without scrolling
+                pygame.draw.circle(screen, node_col, (cx, cy), node_r)
+                bw = 3 if (is_h or i == selected_level) else 1
+                pygame.draw.circle(screen, border_col, (cx, cy), node_r, bw)
+
+                # Pulsing glow for selected
+                if i == selected_level:
+                    pa = int(80 + 60 * math.sin(ui_pulse_t * 3))
+                    glow_s = pygame.Surface((node_r*2+16, node_r*2+16), pygame.SRCALPHA)
+                    pygame.draw.circle(glow_s, (*NEON_GREEN, pa), (node_r+8, node_r+8), node_r+6, 3)
+                    screen.blit(glow_s, (cx - node_r - 8, cy - node_r - 8))
+
+                # Level number
+                num_font = FONT_HP
+                num_surf = num_font.render(str(i), True, WHITE if is_u else MID_GRAY)
+                screen.blit(num_surf, num_surf.get_rect(center=(cx, cy)))
+
+                # Tap detection
                 if m_u and is_h and total_drag_dist < 12 and click_cooldown <= 0:
                     clicked_level = i
 
         screen.set_clip(None)
+
+        # Scroll position indicator (right thin strip)
+        if level_scroll_y < 0:
+            scroll_track = pygame.Rect(box_rect.right - 8, box_rect.y + 6, 4, box_rect.height - 12)
+            pygame.draw.rect(screen, PANEL_MID, scroll_track, border_radius=2)
+            scroll_frac  = abs(level_scroll_y) / 850
+            thumb_h = max(30, int((box_rect.height - 12) * 0.4))
+            thumb_y  = scroll_track.y + int(scroll_frac * (scroll_track.height - thumb_h))
+            pygame.draw.rect(screen, env_acc, pygame.Rect(scroll_track.x, thumb_y, 4, thumb_h), border_radius=2)
 
         if clicked_level is not None:
             tap_snd.play()
@@ -1150,10 +1263,11 @@ while running:
             m_u = False
             total_drag_dist = 0
 
-        # --- BACK BUTTON ---
-        btn_back = pygame.Rect(270, 500, 260, 60)
+        # Back button
+        btn_back = pygame.Rect(255, 494, 290, 56)
         is_h_b = btn_back.collidepoint(mx, my)
-        draw_button(screen, "BACK", FONT_UI, WHITE, btn_back, RED, is_h_b)
+        draw_glowing_button(screen, "← BACK", FONT_UI, WHITE, btn_back, NEON_PINK, is_h_b,
+                            border_radius=16, accent=RED, pulse_t=ui_pulse_t)
 
         if m_c and is_h_b:
             tap_snd.play()
@@ -1161,49 +1275,88 @@ while running:
             click_cooldown = 12
             m_c = False
 
+
     # ==========================
     # STORE (STATE 6, 7, 8)
     # ==========================
     elif state == 6:
         screen.blit(menu_bg, (0, 0))
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
+        overlay.fill((0, 0, 20, 185))
         screen.blit(overlay, (0, 0))
-        
-        draw_text("SPACE STORE", FONT_TITLE, CYAN, 400, 70)
-        
-        coin_bg = pygame.Rect(320, 120, 160, 40)
-        pygame.draw.rect(screen, (20, 20, 30, 180), coin_bg, border_radius=20)
-        pygame.draw.rect(screen, YELLOW, coin_bg, width=2, border_radius=20)
-        screen.blit(coin_icon, (330, 120))
-        draw_text(f"{total_coins}", FONT_UI, YELLOW, x=410, y=138)
-        
-        items = [("Max HP", GREEN, 100, 'hp', unlocked_hp), ("Speed", ORANGE, 310, 'sp', unlocked_speed), ("Bullets", RED, 520, 'pb', unlocked_bullets)]
+        draw_menu_starfield(screen)
+
         mx, my = pygame.mouse.get_pos()
-        
-        for name, col, x, key, curr_val in items:
-            btn = pygame.Rect(x, 200, 180, 140)
-            is_h = btn.collidepoint(mx, my)
-            draw_button(screen, "", FONT_UI, WHITE, btn, (40, 40, 50), is_h, outline_color=col)
-            draw_text(name, FONT_UI, col, x + 90, 240)
-            draw_text(f"Lvl {curr_val}", FONT_SMALL, WHITE, x + 90, 290)
-            
+
+        draw_text_shadow("SPACE STORE", FONT_MSG, NEON_CYAN, 400, 48, shadow_color=(0,80,120), offset=2)
+
+        # Coin badge
+        coin_panel = pygame.Rect(318, 78, 164, 36)
+        pygame.draw.rect(screen, PANEL_BG, coin_panel, border_radius=18)
+        pygame.draw.rect(screen, NEON_GOLD, coin_panel, width=1, border_radius=18)
+        screen.blit(coin_icon, (326, 70))
+        draw_text(str(total_coins), FONT_UI, NEON_GOLD, 395, 96)
+
+        draw_divider(screen, 80, 124, 720, NEON_CYAN, alpha=40)
+
+        # Store item cards
+        store_items = [
+            ("❤  MAX HP",   NEON_GREEN,   70,  'hp', unlocked_hp,      hp_step,    len(hp_costs),     hp_costs),
+            ("⚡  SPEED",    NEON_ORANGE,  280, 'sp', unlocked_speed,   speed_step, len(speed_costs),  speed_costs),
+            ("🔫  BULLETS",  NEON_PINK,    490, 'pb', unlocked_bullets, bullet_step,len(bullet_costs), bullet_costs),
+        ]
+
+        for name, col, x, key, curr_val, step, max_steps, costs in store_items:
+            card = pygame.Rect(x, 148, 190, 220)
+            is_h = card.collidepoint(mx, my)
+            is_sel = store_selection == key
+
+            draw_neon_panel(screen, card, accent=col if (is_h or is_sel) else MID_GRAY,
+                            alpha=235, border_radius=16, border_width=2 if not is_sel else 3, bg=PANEL_MID)
+
+            if is_sel:
+                pa = int(100 + 80 * math.sin(ui_pulse_t * 3))
+                gls = pygame.Surface((card.width+12, card.height+12), pygame.SRCALPHA)
+                pygame.draw.rect(gls, (*col, pa), gls.get_rect(), border_radius=20, width=2)
+                screen.blit(gls, (card.x-6, card.y-6))
+
+            draw_text(name, FONT_SMALL, col, card.centerx, card.y + 34)
+            draw_divider(screen, card.x + 12, card.y + 52, card.right - 12, col, alpha=60)
+
+            # Current value
+            draw_text(str(curr_val), FONT_HUD, WHITE, card.centerx, card.y + 90)
+
+            # Upgrade progress bar
+            prog_frac = min(1.0, step / max(1, max_steps))
+            bar_rect = pygame.Rect(card.x + 14, card.y + 120, card.width - 28, 10)
+            draw_gradient_bar(screen, bar_rect, prog_frac, color_low=(40,40,60), color_high=col,
+                              bg_color=(20,22,35), border_radius=5, show_glow=False)
+            draw_text(f"{step}/{max_steps}", FONT_TINY, LIGHT_GRAY, card.centerx, card.y + 144)
+
+            # Cost
+            next_cost = costs[step] if step < max_steps else "MAX"
+            cost_col = NEON_GOLD if next_cost != "MAX" and total_coins >= (next_cost if next_cost != "MAX" else 0) else (RED if next_cost != "MAX" else MID_GRAY)
+            cost_txt = f"🪙 {next_cost}" if next_cost != "MAX" else "✓ MAX"
+            draw_text(cost_txt, FONT_SMALL, cost_col, card.centerx, card.y + 178)
+
+            # Select on click
             if m_c and is_h:
                 tap_snd.play()
                 store_selection = key
                 click_cooldown = 12
                 m_c = False
 
+        # Item detail popup
         if store_selection:
-            # Blur overlay for popup
-            pop_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            pop_overlay.fill((0, 0, 0, 200))
-            screen.blit(pop_overlay, (0, 0))
-            
-            box_info = pygame.Rect(150, 160, 500, 300)
-            draw_panel(screen, box_info, alpha=245, bg_color=(20, 25, 35), border_color=CYAN, border_width=3, border_radius=20)
+            pop_ovl = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            pop_ovl.fill((0, 0, 0, 200))
+            screen.blit(pop_ovl, (0, 0))
 
-            desc = {"hp": "Increase Total HP Capacity", "sp": "Boost Ship Navigation Speed", "pb": "Unlock Multi-Bullet Fire"}[store_selection]
+            pop_box = pygame.Rect(145, 148, 510, 304)
+            draw_neon_panel(screen, pop_box, accent=NEON_CYAN, alpha=248, border_radius=20)
+
+            desc_map = {"hp": "Increase Maximum HP Capacity", "sp": "Boost Ship Navigation Speed", "pb": "Unlock Extra Bullet Streams"}
+            desc = desc_map.get(store_selection, "")
             if store_selection == 'hp':
                 cost = hp_costs[hp_step] if hp_step < len(hp_costs) else "MAX"
             elif store_selection == 'sp':
@@ -1211,19 +1364,23 @@ while running:
             else:
                 cost = bullet_costs[bullet_step] if bullet_step < len(bullet_costs) else "MAX"
 
-            draw_text("ITEM DETAILS", FONT_MODAL_TITLE, YELLOW, 400, 205)
-            draw_text(desc, FONT_SMALL, WHITE, 400, 255)
-            draw_text(f"COST: {cost} COINS", FONT_UI, GREEN if cost != "MAX" and total_coins >= (cost if cost != "MAX" else 0) else RED, 400, 310)
+            draw_text("UPGRADE DETAILS", FONT_MODAL_TITLE, NEON_GOLD, 400, 194)
+            draw_divider(screen, 185, 218, 615, NEON_GOLD, alpha=50)
+            draw_text(desc, FONT_SMALL, WHITE, 400, 252)
 
-            btn_st_bk = pygame.Rect(180, 380, 180, 52)
-            btn_buy = pygame.Rect(440, 380, 180, 52)
-            
-            is_h_bk = btn_st_bk.collidepoint(mx, my)
-            is_h_buy = btn_buy.collidepoint(mx, my)
-            
-            draw_button(screen, "BACK", FONT_UI, WHITE, btn_st_bk, RED, is_h_bk)
+            can_afford = cost != "MAX" and total_coins >= cost
+            cost_col2 = NEON_GREEN if can_afford else (RED if cost != "MAX" else MID_GRAY)
+            cost_txt2 = f"🪙  {cost} COINS" if cost != "MAX" else "✓  ALREADY MAXED"
+            draw_text(cost_txt2, FONT_UI, cost_col2, 400, 300)
+
+            btn_st_bk = pygame.Rect(175, 368, 192, 54)
+            btn_buy   = pygame.Rect(433, 368, 192, 54)
+            is_h_bk   = btn_st_bk.collidepoint(mx, my)
+            is_h_buy  = btn_buy.collidepoint(mx, my)
+
+            draw_glowing_button(screen, "← BACK", FONT_UI, WHITE, btn_st_bk, NEON_PINK, is_h_bk, pulse_t=ui_pulse_t)
             if cost != "MAX":
-                draw_button(screen, "BUY NOW", FONT_UI, WHITE, btn_buy, GREEN, is_h_buy)
+                draw_glowing_button(screen, "🛒  BUY", FONT_UI, WHITE, btn_buy, NEON_GREEN if can_afford else MID_GRAY, is_h_buy, pulse_t=ui_pulse_t)
 
             if m_c:
                 if is_h_bk:
@@ -1241,9 +1398,10 @@ while running:
                     m_c = False
 
         if not store_selection:
-            btn_b_m = pygame.Rect(270, 450, 260, 60)
+            btn_b_m = pygame.Rect(255, 430, 290, 56)
             is_h_bm = btn_b_m.collidepoint(mx, my)
-            draw_button(screen, "BACK TO MENU", FONT_UI, WHITE, btn_b_m, RED, is_h_bm)
+            draw_glowing_button(screen, "← BACK TO MENU", FONT_UI, WHITE, btn_b_m, NEON_PINK, is_h_bm,
+                                border_radius=16, accent=RED, pulse_t=ui_pulse_t)
             if m_c and is_h_bm:
                 tap_snd.play()
                 state = 0
@@ -1254,23 +1412,25 @@ while running:
         pop_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         pop_overlay.fill((0, 0, 0, 210))
         screen.blit(pop_overlay, (0, 0))
-        
-        box = pygame.Rect(160, 160, 480, 280)
-        draw_panel(screen, box, alpha=250, bg_color=(20, 25, 35), border_color=YELLOW, border_width=3, border_radius=20)
-        
-        draw_text("CONFIRM UPGRADE?", FONT_MODAL_TITLE, YELLOW, 400, 210)
+
+        box = pygame.Rect(160, 170, 480, 260)
+        draw_neon_panel(screen, box, accent=NEON_GOLD, alpha=250, border_radius=20)
+
+        draw_text("⬆  CONFIRM UPGRADE?", FONT_MODAL_TITLE, NEON_GOLD, 400, 212)
+        draw_divider(screen, 195, 238, 605, NEON_GOLD, alpha=50)
         cost = hp_costs[hp_step] if store_selection == 'hp' else speed_costs[speed_step] if store_selection == 'sp' else bullet_costs[bullet_step]
-        draw_text(f"Upgrade attachment for {cost} coins?", FONT_SMALL, WHITE, 400, 260)
-        
-        b_n, b_y = pygame.Rect(190, 330, 190, 52), pygame.Rect(420, 330, 190, 52)
-        
+        draw_text(f"Spend  🪙 {cost} coins  to upgrade?", FONT_SMALL, WHITE, 400, 275)
+        draw_text(f"You have: {total_coins} coins", FONT_TINY, LIGHT_GRAY, 400, 302)
+
         mx, my = pygame.mouse.get_pos()
+        b_n = pygame.Rect(185, 340, 192, 54)
+        b_y = pygame.Rect(423, 340, 192, 54)
         is_h_n = b_n.collidepoint(mx, my)
         is_h_y = b_y.collidepoint(mx, my)
-        
-        draw_button(screen, "CANCEL", FONT_UI, WHITE, b_n, RED, is_h_n)
-        draw_button(screen, "CONFIRM", FONT_UI, BLACK, b_y, GREEN, is_h_y)
-        
+
+        draw_glowing_button(screen, "CANCEL", FONT_UI, WHITE, b_n, NEON_PINK, is_h_n, pulse_t=ui_pulse_t)
+        draw_glowing_button(screen, "✔  CONFIRM", FONT_UI, WHITE, b_y, NEON_GREEN, is_h_y, pulse_t=ui_pulse_t)
+
         if m_c:
             if is_h_n:
                 tap_snd.play()
@@ -1299,23 +1459,24 @@ while running:
         pop_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         pop_overlay.fill((0, 0, 0, 210))
         screen.blit(pop_overlay, (0, 0))
-        
-        box = pygame.Rect(160, 160, 480, 280)
-        draw_panel(screen, box, alpha=250, bg_color=(30, 15, 20), border_color=RED, border_width=3, border_radius=20)
-        
-        draw_text("INSUFFICIENT COINS", FONT_MODAL_TITLE, RED, 400, 210)
-        draw_text("You do not have enough coins for this upgrade!", FONT_SMALL, WHITE, 400, 260)
-        
-        b_b = pygame.Rect(190, 330, 190, 52)
-        b_t = pygame.Rect(420, 330, 190, 52)
-        
+
+        box = pygame.Rect(155, 170, 490, 260)
+        draw_neon_panel(screen, box, accent=NEON_PINK, alpha=250, border_radius=20, bg=(28, 10, 15))
+
+        draw_text("🪙  INSUFFICIENT COINS", FONT_MODAL_TITLE, NEON_PINK, 400, 212)
+        draw_divider(screen, 190, 238, 610, NEON_PINK, alpha=50)
+        draw_text("Not enough coins for this upgrade!", FONT_SMALL, WHITE, 400, 274)
+        draw_text("Complete missions to earn more coins.", FONT_TINY, LIGHT_GRAY, 400, 302)
+
         mx, my = pygame.mouse.get_pos()
+        b_b = pygame.Rect(185, 342, 192, 54)
+        b_t = pygame.Rect(423, 342, 192, 54)
         is_h_b = b_b.collidepoint(mx, my)
         is_h_t = b_t.collidepoint(mx, my)
-        
-        draw_button(screen, "BACK", FONT_UI, WHITE, b_b, RED, is_h_b)
-        draw_button(screen, "MISSIONS", FONT_UI, WHITE, b_t, GREEN, is_h_t)
-        
+
+        draw_glowing_button(screen, "← STORE", FONT_UI, WHITE, b_b, NEON_PINK, is_h_b, pulse_t=ui_pulse_t)
+        draw_glowing_button(screen, "🚀 MISSIONS", FONT_UI, WHITE, b_t, NEON_GREEN, is_h_t, pulse_t=ui_pulse_t)
+
         if m_c:
             if is_h_b:
                 tap_snd.play()
@@ -1332,37 +1493,73 @@ while running:
     # MISSION INFO (STATE 2)
     # ==========================
     elif state == 2:
+        # Background — use active env bg
+        if current_selected_env == 1:
+            screen.blit(galaxy_bg, (0, 0))
+        elif current_selected_env == 2:
+            screen.blit(nebula_bg, (0, 0))
+        else:
+            screen.blit(blackhole_bg, (0, 0))
+
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 210))
+        overlay.fill((0, 0, 0, 200))
         screen.blit(overlay, (0, 0))
 
-        box_rect = pygame.Rect(150, 100, 500, 400)
-        draw_panel(screen, box_rect, alpha=250, bg_color=(20, 25, 35), border_color=CYAN, border_width=3, border_radius=20)
-
+        env_acc2 = {1: NEON_BLUE, 2: NEON_PURPLE, 3: NEON_PINK}[current_selected_env]
         env_names = {1: "GALAXY SECTOR", 2: "NEBULA ZONE", 3: "BLACKHOLE HORIZON"}
         curr_env_title = env_names.get(current_selected_env, "GALAXY SECTOR")
 
-        draw_text(f"MISSION {selected_level}", FONT_MODAL_TITLE, YELLOW, 400, 150)
-        draw_text(curr_env_title, FONT_MODAL_SUB, CYAN, 400, 190)
+        box_rect = pygame.Rect(130, 78, 540, 444)
+        draw_neon_panel(screen, box_rect, accent=env_acc2, alpha=250, border_radius=20, bg=PANEL_BG)
+
+        draw_text_shadow(f"MISSION  {selected_level}", FONT_MODAL_TITLE, NEON_GOLD, 400, 126, shadow_color=(80,50,0), offset=2)
+        draw_badge(screen, curr_env_title, FONT_TINY, 400, 160, bg_color=PANEL_MID, text_color=env_acc2, border_color=env_acc2)
+        draw_divider(screen, 165, 182, 635, env_acc2, alpha=50)
 
         boss_kill_reqs = {1: 15, 2: 20, 3: 25, 4: 35, 5: 45, 6: 60, 7: 75, 8: 90, 9: 105, 10: 120}
         req_k = min(200, 120 + (selected_level - 10) * 4) if selected_level >= 11 else boss_kill_reqs.get(selected_level, 25)
-        
-        info_pill = pygame.Rect(180, 230, 440, 65)
-        pygame.draw.rect(screen, (30, 35, 50), info_pill, border_radius=12)
-        pygame.draw.rect(screen, (60, 80, 120), info_pill, width=1, border_radius=12)
-        draw_text("OBJECTIVE:", FONT_SMALL, YELLOW, 400, 250)
-        draw_text(f"Eliminate {req_k} Enemies to summon Sector Boss", FONT_SMALL, WHITE, 400, 275)
 
-        b_r = pygame.Rect(180, 380, 200, 55)
-        b_a = pygame.Rect(420, 380, 200, 55)
+        # Objective card
+        obj_rect = pygame.Rect(160, 200, 480, 72)
+        pygame.draw.rect(screen, PANEL_MID, obj_rect, border_radius=12)
+        pygame.draw.rect(screen, env_acc2, obj_rect, width=1, border_radius=12)
+        pygame.draw.rect(screen, env_acc2, pygame.Rect(160, 210, 3, 52), border_radius=2)
+        draw_text("⚔  OBJECTIVE", FONT_SMALL, NEON_GOLD, 400, 222)
+        draw_text(f"Eliminate {req_k} enemies to summon the Sector Boss", FONT_SMALL, WHITE, 400, 250)
+
+        # Tier / difficulty badge
+        tier = (selected_level - 1) // 5 + 1
+        diff_labels = {1:"NOVICE", 2:"RECRUIT", 3:"VETERAN", 4:"ELITE", 5:"COMMANDER", 6:"OVERLORD", 7:"LEGEND", 8:"MYTHIC"}
+        diff_txt = diff_labels.get(tier, "MYTHIC")
+        diff_col = [NEON_GREEN, NEON_BLUE, NEON_CYAN, NEON_ORANGE, NEON_PINK, RED, NEON_PURPLE, NEON_GOLD][min(tier-1, 7)]
+        draw_badge(screen, f"DIFFICULTY: {diff_txt}", FONT_TINY, 400, 308, bg_color=PANEL_MID, text_color=diff_col, border_color=diff_col)
+
+        # Enemy type preview
+        preview_y = 352
+        draw_text("ENEMY ROSTER", FONT_TINY, LIGHT_GRAY, 400, preview_y - 16)
+        enemy_info = [
+            (fighter_img, "Fighter",  NEON_CYAN),
+            (elite_img,   "Elite",    NEON_PURPLE),
+            (heavy_img,   "Heavy",    NEON_ORANGE),
+        ]
+        ex = 260
+        for eimg, ename, ecol in enemy_info:
+            esc = pygame.transform.scale(eimg, (36, 36))
+            screen.blit(esc, (ex, preview_y))
+            draw_text(ename, FONT_TINY, ecol, ex + 18, preview_y + 50)
+            ex += 100
 
         mx, my = pygame.mouse.get_pos()
+        b_r = pygame.Rect(155, 432, 220, 58)
+        b_a = pygame.Rect(425, 432, 220, 58)
         is_h_r = b_r.collidepoint(mx, my)
         is_h_a = b_a.collidepoint(mx, my)
 
-        draw_button(screen, "LAUNCH", FONT_UI, WHITE, b_r, GREEN, is_h_r)
-        draw_button(screen, "BACK", FONT_UI, WHITE, b_a, RED, is_h_a)
+        # Launch button with animated border sweep
+        draw_glowing_button(screen, "🚀  LAUNCH", FONT_UI, WHITE, b_r, NEON_GREEN, is_h_r,
+                            border_radius=16, accent=GREEN, pulse_t=ui_pulse_t)
+        draw_glowing_button(screen, "← BACK", FONT_UI, WHITE, b_a, NEON_PINK, is_h_a,
+                            border_radius=16, accent=RED, pulse_t=ui_pulse_t)
 
         if m_c:
             if is_h_r:
@@ -1376,6 +1573,7 @@ while running:
                 state = 1
                 click_cooldown = 12
                 m_c = False
+
 
     # ==========================
     # GAMEPLAY (STATE 3)
@@ -2212,32 +2410,33 @@ while running:
 
         # Regular Victory Screen (State 4)
         elif state == 4:
-            box = pygame.Rect(150, 90, 500, 420)
-            draw_panel(screen, box, alpha=245, bg_color=(15, 28, 22), border_color=GREEN, border_width=3, border_radius=20)
+            box = pygame.Rect(140, 90, 520, 420)
+            draw_neon_panel(screen, box, accent=NEON_GREEN, alpha=250, border_radius=20, bg=(10,24,18))
 
-            draw_text("VICTORY!", FONT_MODAL_TITLE, GREEN, 400, 135)
-            draw_text("SECTOR SECURED", FONT_MODAL_SUB, CYAN, 400, 170)
+            draw_text_shadow("🏆  VICTORY!", FONT_MODAL_TITLE, NEON_GREEN, 400, 135, shadow_color=(0,80,40), offset=2)
+            draw_text("SECTOR SECURED", FONT_TINY, NEON_CYAN, 400, 170)
+            draw_divider(screen, 180, 188, 620, NEON_GREEN, alpha=50)
 
             # Star Rating on Victory
             earned_stars = 3 if kill_count >= 20 else (2 if kill_count >= 10 else 1)
-            star_icon = pygame.transform.scale(star_for_rating, (44, 44))
-            start_x = 400 - ((earned_stars * 50) // 2) + 5
+            star_icon = pygame.transform.scale(star_for_rating, (48, 48))
+            start_x = 400 - ((earned_stars * 54) // 2) + 3
             for i in range(earned_stars):
-                screen.blit(star_icon, (start_x + (i * 50), 205))
+                screen.blit(star_icon, (start_x + (i * 54), 205))
 
-            stats_box = pygame.Rect(180, 260, 440, 48)
-            pygame.draw.rect(screen, (20, 40, 30), stats_box, border_radius=10)
-            pygame.draw.rect(screen, (40, 80, 60), stats_box, width=1, border_radius=10)
-            draw_text(f"+{level_coins} Coins Earned  |  Kills: {kill_count}", FONT_SMALL, YELLOW, 400, 284)
+            stats_box = pygame.Rect(180, 275, 440, 50)
+            pygame.draw.rect(screen, PANEL_MID, stats_box, border_radius=12)
+            pygame.draw.rect(screen, NEON_GREEN, stats_box, width=1, border_radius=12)
+            draw_text(f"🪙 +{level_coins} Coins Earned  |  ⚔ Kills: {kill_count}", FONT_SMALL, NEON_GOLD, 400, 300)
 
-            b_m = pygame.Rect(180, 340, 200, 55)
-            b_n = pygame.Rect(420, 340, 200, 55)
+            b_m = pygame.Rect(175, 360, 210, 56)
+            b_n = pygame.Rect(415, 360, 210, 56)
 
             is_h_m = b_m.collidepoint(mx, my)
             is_h_n = b_n.collidepoint(mx, my)
 
-            draw_button(screen, "MAIN MENU", FONT_UI, WHITE, b_m, BLUE, is_h_m)
-            draw_button(screen, "NEXT LEVEL", FONT_UI, WHITE, b_n, GREEN, is_h_n)
+            draw_glowing_button(screen, "← MAIN MENU", FONT_UI, WHITE, b_m, NEON_BLUE, is_h_m, pulse_t=ui_pulse_t)
+            draw_glowing_button(screen, "NEXT LEVEL ➔", FONT_UI, WHITE, b_n, NEON_GREEN, is_h_n, pulse_t=ui_pulse_t)
 
             if m_c:
                 if is_h_m:
@@ -2259,28 +2458,29 @@ while running:
 
         # Regular Game Over Screen (State 5)
         elif state == 5:
-            box = pygame.Rect(140, 80, 520, 440)
-            draw_panel(screen, box, alpha=245, bg_color=(28, 15, 20), border_color=RED, border_width=3, border_radius=20)
+            box = pygame.Rect(130, 80, 540, 450)
+            draw_neon_panel(screen, box, accent=NEON_PINK, alpha=250, border_radius=20, bg=(28,10,15))
 
-            draw_text("MISSION FAILED", FONT_MODAL_TITLE, RED, 400, 125)
-            draw_text("SHIP DESTROYED IN COMBAT", FONT_SMALL, LIGHT_GRAY, 400, 160)
+            draw_text_shadow("💀  MISSION FAILED", FONT_MODAL_TITLE, NEON_PINK, 400, 125, shadow_color=(80,0,0), offset=2)
+            draw_text("SHIP DESTROYED IN COMBAT", FONT_TINY, LIGHT_GRAY, 400, 160)
+            draw_divider(screen, 170, 178, 630, NEON_PINK, alpha=50)
 
-            stats_box = pygame.Rect(180, 185, 440, 44)
-            pygame.draw.rect(screen, (40, 20, 25), stats_box, border_radius=10)
-            pygame.draw.rect(screen, (80, 40, 50), stats_box, width=1, border_radius=10)
-            draw_text(f"Coins: +{level_coins}  |  Enemies Down: {kill_count}", FONT_SMALL, YELLOW, 400, 207)
+            stats_box = pygame.Rect(170, 195, 460, 48)
+            pygame.draw.rect(screen, PANEL_MID, stats_box, border_radius=12)
+            pygame.draw.rect(screen, NEON_PINK, stats_box, width=1, border_radius=12)
+            draw_text(f"🪙 Coins: +{level_coins}  |  ⚔ Enemies Down: {kill_count}", FONT_SMALL, NEON_GOLD, 400, 219)
 
-            rev_b = pygame.Rect(190, 245, 420, 55)
-            b_n = pygame.Rect(190, 312, 420, 50)
-            b_m = pygame.Rect(190, 372, 420, 50)
+            rev_b = pygame.Rect(190, 265, 420, 58)
+            b_n   = pygame.Rect(190, 335, 420, 52)
+            b_m   = pygame.Rect(190, 395, 420, 52)
 
             is_h_rev = rev_b.collidepoint(mx, my)
-            is_h_n = b_n.collidepoint(mx, my)
-            is_h_m = b_m.collidepoint(mx, my)
+            is_h_n   = b_n.collidepoint(mx, my)
+            is_h_m   = b_m.collidepoint(mx, my)
 
-            draw_button(screen, "REVIVE STARSHIP", FONT_UI, BLACK, rev_b, YELLOW, is_h_rev, outline_color=WHITE)
-            draw_button(screen, "RETRY MISSION", FONT_UI, WHITE, b_n, ORANGE, is_h_n)
-            draw_button(screen, "MAIN MENU", FONT_UI, WHITE, b_m, BLUE, is_h_m)
+            draw_glowing_button(screen, "✨  REVIVE STARSHIP", FONT_UI, WHITE, rev_b, NEON_GOLD, is_h_rev, pulse_t=ui_pulse_t)
+            draw_glowing_button(screen, "↻  RETRY MISSION", FONT_UI, WHITE, b_n, NEON_ORANGE, is_h_n, pulse_t=ui_pulse_t)
+            draw_glowing_button(screen, "← MAIN MENU", FONT_UI, WHITE, b_m, NEON_BLUE, is_h_m, pulse_t=ui_pulse_t)
 
             if m_c:
                 if is_h_rev:
