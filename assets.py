@@ -6,11 +6,13 @@ from settings import *
 pygame.font.init()
 pygame.display.set_caption("Crazyy Simulation")
 FONT_TITLE = pygame.font.SysFont("Impact", 80)
-FONT_MSG = pygame.font.SysFont("Impact", 60)
-FONT_UI = pygame.font.SysFont("Impact", 32)
-FONT_HUD = pygame.font.SysFont("Impact", 35)
-FONT_SMALL = pygame.font.SysFont("Arial Black", 18)
-FONT_HP = pygame.font.SysFont("Arial Black", 16)
+FONT_MSG = pygame.font.SysFont("Impact", 50)
+FONT_MODAL_TITLE = pygame.font.SysFont("Impact", 42)
+FONT_MODAL_SUB = pygame.font.SysFont("Impact", 26)
+FONT_UI = pygame.font.SysFont("Impact", 30)
+FONT_HUD = pygame.font.SysFont("Impact", 34)
+FONT_SMALL = pygame.font.SysFont("Arial Black", 16)
+FONT_HP = pygame.font.SysFont("Arial Black", 14)
 
 # Assets Folder Path
 ASSETS_DIR = "game_assets"
