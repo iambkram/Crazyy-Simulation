@@ -70,6 +70,10 @@ is_dragging_sfx = False
 mission_scroll_y = 0
 is_dragging_missions = False
 last_mouse_y = 0
+touch_start_y = 0
+touch_start_x = 0
+total_drag_dist = 0
+m_u = False
 settings_from_pause = False
 level_coins = 0
 warning_target = ""
@@ -431,9 +435,11 @@ while running:
         current_bgm = "main"
     # ==========================================
 
+    m_c = False
+    m_u = False
+
     if click_cooldown > 0:
         click_cooldown -= 1
-        m_c = False
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
@@ -442,6 +448,9 @@ while running:
                 m_c = True
             if event.button == 4: level_scroll_y = min(0, level_scroll_y + 30)
             if event.button == 5: level_scroll_y = max(-850, level_scroll_y - 30)
+        if event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                m_u = True
 
     # ==========================================
     # 🔥 3. BRANDING ANIMATION (STATE -2) BEST QUALITY 🔥
@@ -898,17 +907,23 @@ while running:
             if not is_dragging_missions:
                 is_dragging_missions = True
                 last_mouse_y = my
+                touch_start_y = my
+                touch_start_x = mx
+                total_drag_dist = 0
             else:
                 dy = my - last_mouse_y
                 level_scroll_y += dy
+                total_drag_dist += abs(dy) + abs(my - touch_start_y)
                 last_mouse_y = my
         else:
-            is_dragging_missions = False
+            if not m_down:
+                is_dragging_missions = False
 
         level_scroll_y = max(-850, min(0, level_scroll_y))
         screen.set_clip(box_rect.inflate(-10, -10))
 
         env_max = 40  # Temporarily fully unlocked for all envs
+        clicked_level = None
         
         for i in range(1, 41):
             lx = 150 + ((i - 1) % 5) * 100
@@ -924,13 +939,20 @@ while running:
                 # Modern Node button
                 draw_button(screen, str(i), FONT_TITLE, WHITE if is_u else LIGHT_GRAY, lvl_rect, BLUE if is_u else (30, 30, 30), is_h, border_radius=20, outline_color=CYAN)
 
-                if m_c and is_h:
-                    tap_snd.play()
-                    selected_level = i
-                    state = 2
-                    click_cooldown = 12
-                    m_c = False
+                # Only register selection on clean tap release without scrolling
+                if m_u and is_h and total_drag_dist < 12 and click_cooldown <= 0:
+                    clicked_level = i
+
         screen.set_clip(None)
+
+        if clicked_level is not None:
+            tap_snd.play()
+            selected_level = clicked_level
+            state = 2
+            click_cooldown = 12
+            m_c = False
+            m_u = False
+            total_drag_dist = 0
 
         # --- BACK BUTTON ---
         btn_back = pygame.Rect(270, 500, 260, 60)
@@ -1245,12 +1267,24 @@ while running:
             if mouse_pressed and not is_h_pause:
                 target_x = max(player_rect.width // 2, min(WIDTH - player_rect.width // 2, mx))
                 target_y = max(100, min(HEIGHT - 40, my - 35))
-                player_rect.centerx += int((target_x - player_rect.centerx) * 0.35)
-                player_rect.centery += int((target_y - player_rect.centery) * 0.35)
+
+                dx = target_x - player_rect.centerx
+                dy = target_y - player_rect.centery
+                dist = math.hypot(dx, dy)
+                if dist > 1.5:
+                    step = min(dist, eff_player_speed)
+                    player_rect.x += int((dx / dist) * step)
+                    player_rect.y += int((dy / dist) * step)
 
                 if fire_cooldown <= 0:
                     is_firing = True
                     fire_cooldown = 8 if is_blackhole else (7 if current_level <= 15 else 5)
+
+        # Keep player ship within screen boundaries
+        player_rect.left = max(0, player_rect.left)
+        player_rect.right = min(WIDTH, player_rect.right)
+        player_rect.top = max(80, player_rect.top)
+        player_rect.bottom = min(HEIGHT - 10, player_rect.bottom)
 
         # ----------------------------------------------------
         # BLACKHOLE GRAVITATIONAL PULL ON PLAYER & SHRINK
