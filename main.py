@@ -411,12 +411,17 @@ def save_game():
         "max_galaxy_level": max_galaxy_level,
         "max_nebula_level": max_nebula_level,
         "max_blackhole_level": max_blackhole_level,
+        "env2_unlocked": env2_unlocked or (max_galaxy_level > 30),
+        "env3_unlocked": env3_unlocked or (max_nebula_level > 30),
         "control_type": control_type,
         "music_vol": music_vol,
         "sfx_vol": sfx_vol
     }
-    with open(SAVE_FILE, "w") as f:
-        json.dump(data, f)
+    try:
+        with open(SAVE_FILE, "w") as f:
+            json.dump(data, f, indent=4)
+    except Exception as e:
+        print("Save error:", e)
 
 
 class Asteroid(pygame.sprite.Sprite):
@@ -508,7 +513,15 @@ def load_game():
     global music_vol, sfx_vol, tap_snd
     global total_coins, unlocked_hp, hp_step, unlocked_speed, speed_step
     global unlocked_bullets, bullet_step, max_galaxy_level, max_nebula_level, max_blackhole_level, control_type
-    global env2_unlocked, env3_unlocked
+    global env1_unlocked, env2_unlocked, env3_unlocked
+
+    # Safe Defaults for new players (Galaxy Lvl 1 only unlocked)
+    max_galaxy_level = 1
+    max_nebula_level = 1
+    max_blackhole_level = 1
+    env1_unlocked = True
+    env2_unlocked = False
+    env3_unlocked = False
 
     if os.path.exists(SAVE_FILE):
         try:
@@ -521,14 +534,17 @@ def load_game():
                 speed_step = data.get("speed_step", 0)
                 unlocked_bullets = data.get("bullets", 1)
                 bullet_step = data.get("bullet_step", 0)
-                max_galaxy_level = 40
-                max_nebula_level = 40
-                max_blackhole_level = 40
+                max_galaxy_level = max(1, min(40, data.get("max_galaxy_level", 1)))
+                max_nebula_level = max(1, min(40, data.get("max_nebula_level", 1)))
+                max_blackhole_level = max(1, min(40, data.get("max_blackhole_level", 1)))
                 control_type = data.get("control_type", 'PC')
                 music_vol = data.get("music_vol", 0.5)
                 sfx_vol = data.get("sfx_vol", 0.7)
-                env2_unlocked = data.get("env2_unlocked", False)
-                env3_unlocked = data.get("env3_unlocked", False)
+                
+                # Unlock criteria: 30 levels of preceding environment must be completed
+                env1_unlocked = True
+                env2_unlocked = data.get("env2_unlocked", False) or (max_galaxy_level > 30)
+                env3_unlocked = data.get("env3_unlocked", False) or (max_nebula_level > 30)
 
                 if music_vol is None: music_vol = 0.5
                 if sfx_vol is None: sfx_vol = 0.7
@@ -811,23 +827,26 @@ while running:
         draw_text("Choose your combat zone", FONT_TINY, (80, 130, 180), 400, 82)
         draw_divider(screen, 80, 98, 720, NEON_CYAN, alpha=40)
 
-        # --- Environment Card Data ---
+        # --- Environment Card Data & Progression Criteria ---
+        env2_unlocked = (max_galaxy_level > 30) or env2_unlocked
+        env3_unlocked = (max_nebula_level > 30) or env3_unlocked
+
         envs = [
-            (1, "🌌  GALAXY",      "Stellar battlefields",   "(0, 60, 140)",    NEON_BLUE,   env1_unlocked),
-            (2, "🌫  NEBULA",      "Purple gas clouds",      "(80, 30, 120)",   NEON_PURPLE, env2_unlocked),
-            (3, "⚫  BLACK HOLE",  "Gravitational singularity", "(120, 20, 40)", NEON_PINK,   env3_unlocked),
+            (1, "🌌  GALAXY SECTOR",   "Stellar battlefields",   NEON_BLUE,   True,          max_galaxy_level),
+            (2, "🌫  NEBULA ZONE",      "Purple gas clouds",      NEON_PURPLE, env2_unlocked, max_nebula_level),
+            (3, "⚫  BLACK HOLE",       "Singularity hazard",     NEON_PINK,   env3_unlocked, max_blackhole_level),
         ]
 
         card_y_positions = [118, 248, 378]
 
-        for idx, (env_id, name, subtitle, _, accent, unlocked) in enumerate(envs):
+        for idx, (env_id, name, base_sub, accent, unlocked, max_lvl) in enumerate(envs):
             card = pygame.Rect(80, card_y_positions[idx], 640, 112)
             is_selected = (current_selected_env == env_id)
             is_hover    = card.collidepoint(mx, my) and unlocked
 
             # Card background
             bg_col = PANEL_MID if unlocked else PANEL_DARK
-            draw_neon_panel(screen, card, accent=accent if unlocked else MID_GRAY,
+            draw_neon_panel(screen, card, accent=accent if unlocked else (70, 30, 40),
                             alpha=230, border_radius=16, border_width=2 if not is_selected else 3, bg=bg_col)
 
             # Pulsing selected border
@@ -838,28 +857,36 @@ while running:
                 screen.blit(pulse_surf, (card.x - 6, card.y - 6))
 
             # Environment name
-            col = WHITE if unlocked else MID_GRAY
-            draw_text(name, FONT_HUD, col, card.x + 220, card.centery - 16, center=False)
-            draw_text(subtitle, FONT_TINY, accent if unlocked else (60, 65, 80), card.x + 222, card.centery + 12, center=False)
+            col = WHITE if unlocked else (160, 160, 170)
+            draw_text(name, FONT_HUD, col, card.x + 100, card.centery - 20, center=False)
+
+            # Subtitle / Unlock requirement text
+            if unlocked:
+                draw_text(f"{base_sub}  ·  Max Mission: {max_lvl}/40", FONT_TINY, accent, card.x + 102, card.centery + 14, center=False)
+            else:
+                if env_id == 2:
+                    req_text = f"COMPLETE 30 GALAXY MISSIONS ({min(30, max_galaxy_level - 1)}/30 COMPLETED)"
+                else:
+                    req_text = f"COMPLETE 30 NEBULA MISSIONS ({min(30, max_nebula_level - 1)}/30 COMPLETED)"
+                draw_text(req_text, FONT_TINY, (255, 100, 100), card.x + 102, card.centery + 14, center=False)
 
             # Status badge
             if not unlocked:
-                draw_badge(screen, "🔒  LOCKED", FONT_TINY, card.right - 80, card.centery, bg_color=(50, 20, 20), text_color=RED, border_color=RED)
+                draw_badge(screen, "🔒  LOCKED", FONT_TINY, card.right - 80, card.centery, bg_color=(50, 18, 22), text_color=(255, 100, 100), border_color=RED)
             elif is_selected:
                 draw_badge(screen, "✔  SELECTED", FONT_TINY, card.right - 82, card.centery, bg_color=(20, 50, 30), text_color=NEON_GREEN, border_color=NEON_GREEN)
             else:
-                draw_badge(screen, "40 LEVELS", FONT_TINY, card.right - 68, card.centery, bg_color=PANEL_BG, text_color=NEON_CYAN, border_color=NEON_CYAN)
+                draw_badge(screen, f"LVL {max_lvl}/40", FONT_TINY, card.right - 72, card.centery, bg_color=PANEL_BG, text_color=accent, border_color=accent)
 
-            # Lock icon overlay for locked
+            # Lock icon or Environment Swatch
             if not unlocked:
-                lock_sm = pygame.transform.scale(lock_icon, (52, 52))
-                screen.blit(lock_sm, (card.x + 20, card.centery - 26))
+                lock_sm = pygame.transform.scale(lock_icon, (48, 48))
+                screen.blit(lock_sm, (card.x + 24, card.centery - 24))
             else:
-                # Small env color swatch
-                swatch_rect = pygame.Rect(card.x + 20, card.centery - 28, 56, 56)
+                swatch_rect = pygame.Rect(card.x + 22, card.centery - 26, 52, 52)
                 pygame.draw.rect(screen, (10, 20, 40), swatch_rect, border_radius=12)
                 pygame.draw.rect(screen, accent, swatch_rect, width=2, border_radius=12)
-                draw_text(name[0:2], FONT_UI, accent, swatch_rect.centerx, swatch_rect.centery)
+                draw_text(str(env_id), FONT_UI, accent, swatch_rect.centerx, swatch_rect.centery)
 
             # Click logic
             if m_c and is_hover:
@@ -1135,7 +1162,16 @@ while running:
         level_scroll_y = max(-850, min(0, level_scroll_y))
         screen.set_clip(box_rect.inflate(-8, -8))
 
-        env_max = 40
+        # Calculate current environment max unlocked level
+        if current_selected_env == 1:
+            env_max = max_galaxy_level
+        elif current_selected_env == 2:
+            env_max = max_nebula_level
+        elif current_selected_env == 3:
+            env_max = max_blackhole_level
+        else:
+            env_max = 1
+
         clicked_level = None
 
         for i in range(1, 41):
@@ -1147,7 +1183,7 @@ while running:
             node_r = 36  # radius
             cx, cy = lx + node_r, ly + node_r
             lvl_rect = pygame.Rect(lx, ly, node_r*2, node_r*2)
-            is_u = i <= env_max
+            is_u = (i <= env_max)
             in_view = 100 < ly < 478
             is_h = False
 
@@ -1156,13 +1192,13 @@ while running:
 
                 # Node fill
                 if not is_u:
-                    node_col = PANEL_DARK
-                    border_col = MID_GRAY
+                    node_col = (15, 18, 26)
+                    border_col = (50, 55, 70)
                 elif i == selected_level:
                     node_col = (20, 50, 30)
                     border_col = NEON_GREEN
                 elif is_h:
-                    node_col = get_highlight(env_acc if is_u else DARK_GRAY)
+                    node_col = get_highlight(env_acc)
                     border_col = NEON_CYAN
                 else:
                     node_col = PANEL_MID
@@ -1179,10 +1215,13 @@ while running:
                     pygame.draw.circle(glow_s, (*NEON_GREEN, pa), (node_r+8, node_r+8), node_r+6, 3)
                     screen.blit(glow_s, (cx - node_r - 8, cy - node_r - 8))
 
-                # Level number
-                num_font = FONT_HP
-                num_surf = num_font.render(str(i), True, WHITE if is_u else MID_GRAY)
-                screen.blit(num_surf, num_surf.get_rect(center=(cx, cy)))
+                # Level number or Lock symbol
+                if is_u:
+                    num_surf = FONT_HP.render(str(i), True, WHITE)
+                    screen.blit(num_surf, num_surf.get_rect(center=(cx, cy)))
+                else:
+                    lock_mini = pygame.transform.scale(lock_icon, (24, 24))
+                    screen.blit(lock_mini, lock_mini.get_rect(center=(cx, cy)))
 
                 # Tap detection
                 if m_u and is_h and total_drag_dist < 12 and click_cooldown <= 0:
@@ -1901,14 +1940,19 @@ while running:
                     boss_active = False
                     boss_defeated_timer = 120
                     boss_expl_snd.play()
-                    if current_selected_env == 1 and current_level == max_galaxy_level and max_galaxy_level < 40:
-                        max_galaxy_level += 1
-                        env2_unlocked = True
-                    elif current_selected_env == 2 and current_level == max_nebula_level and max_nebula_level < 40:
-                        max_nebula_level += 1
-                        env3_unlocked = True
-                    elif current_selected_env == 3 and current_level == max_blackhole_level and max_blackhole_level < 40:
-                        max_blackhole_level += 1
+                    if current_selected_env == 1:
+                        if current_level == max_galaxy_level and max_galaxy_level < 40:
+                            max_galaxy_level += 1
+                        if max_galaxy_level > 30:
+                            env2_unlocked = True
+                    elif current_selected_env == 2:
+                        if current_level == max_nebula_level and max_nebula_level < 40:
+                            max_nebula_level += 1
+                        if max_nebula_level > 30:
+                            env3_unlocked = True
+                    elif current_selected_env == 3:
+                        if current_level == max_blackhole_level and max_blackhole_level < 40:
+                            max_blackhole_level += 1
                     save_game()
             else:
                 vfx_engine.emit_boss_thrusters(boss_rect)
