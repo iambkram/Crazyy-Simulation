@@ -5,52 +5,282 @@ import json
 import os
 import math
 
-from jinja2.utils import htmlsafe_json_dumps
-
 pygame.init()
 pygame.mixer.init()
 pygame.mixer.set_num_channels(64)
 
 from settings import *
 
-# 🔥 SCALE ENV BACKGROUNDS (WIDTH, HEIGHT) 🔥
-galaxy_bg = pygame.transform.scale(pygame.image.load("game_assets/galaxy.jpg"), (WIDTH, HEIGHT))
-stars_bg = pygame.transform.scale(pygame.image.load("game_assets/stars.jpg"), (WIDTH, HEIGHT))
-nebula_bg = pygame.transform.scale(pygame.image.load("game_assets/nebula.jpg"), (WIDTH, HEIGHT))
-blackhole_bg = pygame.transform.scale(pygame.image.load("game_assets/blackhole.png"), (WIDTH, HEIGHT))
-
-# Load a lock icon (Image button pe locked overlay lagane ke liye)
-lock_icon = pygame.image.load("game_assets/lock.png") # PNG use karna transparency ke liye
-lock_icon = pygame.transform.scale(lock_icon, (90, 90)) # adjust size as needed
-
-# 👇 PEHLE SCREEN BANA
-# Tumhara purana WIDTH aur HEIGHT wahi rehne do (shayed 800 aur 600 hai)
+# ==========================================
+# SCREEN SETUP (must happen before any image loading)
+# ==========================================
 WIDTH = 800
 HEIGHT = 600
 
-# ==========================================
-# 1. LOGO FIX (Mendhak hatane ke liye)
-# ==========================================
 try:
-    # Tumhari 'icon.ico' file ko load kar rahe hain
     game_icon = pygame.image.load('icon.ico')
     pygame.display.set_icon(game_icon)
 except:
-    print("Warning: icon.ico file nahi mili!")
+    pass
 
-# ==========================================
-# 2. FULL SCREEN & AUTO-SCALE FIX
-# ==========================================
-# pygame.SCALED jaadu ki tarah kaam karega, sab kuch auto-fit ho jayega!
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN | pygame.SCALED)
-
-# Game ka naam (Window Title)
 pygame.display.set_caption("Crazyy Simulation")
+
+# Import only fonts and helper functions from assets (no heavy images yet)
 from assets import *
+
+# ==========================================
+# MINIMAL BOOTSTRAP ASSETS (tiny, needed before loading screen)
+# ==========================================
+_loading_bg_raw = pygame.image.load("game_assets/loading_bg.jpeg").convert()
+loading_bg = pygame.transform.scale(_loading_bg_raw, (WIDTH, HEIGHT))
+
+# ==========================================
+# REAL PROGRESSIVE LOADING SYSTEM
+# ==========================================
+# Each task is (label_string, callable)
+# We call each task during the loading screen, rendering progress between each one.
+
+_load_results = {}   # will hold all loaded assets by name
+
+def _make_load_tasks():
+    """Returns an ordered list of (label, callable) for every real asset."""
+    tasks = []
+    ASSETS_DIR = "game_assets"
+
+    def _img(name, size=None):
+        path = os.path.join(ASSETS_DIR, name)
+        img = pygame.image.load(path).convert_alpha()
+        return pygame.transform.scale(img, size) if size else img
+
+    def _snd(name):
+        return pygame.mixer.Sound(os.path.join(ASSETS_DIR, name))
+
+    # --- Backgrounds (heaviest files) ---
+    tasks.append(("Loading Galaxy background...",      lambda: _img("galaxy.jpg", (WIDTH, HEIGHT))))
+    tasks.append(("Loading Nebula background...",      lambda: _img("nebula.jpg", (WIDTH, HEIGHT))))
+    tasks.append(("Loading Stars background...",       lambda: _img("stars.jpg", (WIDTH, HEIGHT))))
+    tasks.append(("Loading Black Hole background...",  lambda: _img("blackhole.png", (WIDTH, HEIGHT))))
+    tasks.append(("Loading Menu background...",        lambda: _img("menu_bg.jpeg", (WIDTH, HEIGHT))))
+
+    # --- Ship sprites ---
+    tasks.append(("Loading Player ship...",   lambda: _img("6B.png", (70, 70))))
+    tasks.append(("Loading Fighter enemy...", lambda: _img("1.png", (50, 50))))
+    tasks.append(("Loading Elite enemy...",   lambda: _img("3B.png", (60, 60))))
+    tasks.append(("Loading Heavy enemy...",   lambda: _img("8B.png", (80, 80))))
+
+    # --- Boss images ---
+    boss_files = ["lvl_1_to_10.png", "lvl_11_to_20.png", "lvl_21_to_30.png", "lvl_31_to_40.png"]
+    for i in range(1, 9):
+        idx = min((i - 1) // 2, 3)
+        fname = boss_files[idx]
+        tier = i
+        tasks.append((f"Loading Boss Tier {tier}...", lambda f=fname, t=tier: pygame.transform.scale(_img(f), (140 + t * 15, 100 + t * 10))))
+
+    # --- UI icons ---
+    tasks.append(("Loading Coin icon...",   lambda: pygame.transform.scale(_img("coin.png"), (40, 40))))
+    tasks.append(("Loading Star icon...",   lambda: _img("star.png")))
+    tasks.append(("Loading Lock icon...",   lambda: pygame.transform.scale(pygame.image.load("game_assets/lock.png"), (90, 90))))
+    tasks.append(("Loading Asteroid...",    lambda: pygame.image.load("game_assets/asteroid.png").convert_alpha()))
+
+    # --- Sound effects ---
+    tasks.append(("Loading Shoot SFX...",   lambda: _snd("shoot.mp3")))
+    tasks.append(("Loading Hit SFX...",     lambda: _snd("hit.mp3")))
+    tasks.append(("Loading Explosion SFX...", lambda: _snd("expl.mp3")))
+    tasks.append(("Loading Boss Explosion SFX...", lambda: _snd("boss_expl.mp3")))
+    tasks.append(("Loading UI Tap SFX...",  lambda: _snd("tap.mp3")))
+    tasks.append(("Loading Victory SFX...", lambda: _snd("game_won.mp3")))
+    tasks.append(("Loading Defeat SFX...",  lambda: _snd("game_loose.mp3")))
+
+    # --- BGM paths (just string paths, no actual load needed) ---
+    tasks.append(("Preparing BGM tracks...", lambda: {
+        "loading":  os.path.join(ASSETS_DIR, "loading.mp3"),
+        "main":     os.path.join(ASSETS_DIR, "bgm_main.mp3"),
+        "fast":     os.path.join(ASSETS_DIR, "bgm_fast.mp3"),
+    }))
+
+    return tasks
+
+
+def run_loading_screen():
+    """
+    Runs the full loading screen with real progressive asset loading.
+    Returns a dict of all loaded assets.
+    """
+    global loading_bg
+    tasks = _make_load_tasks()
+    total   = len(tasks)
+    results = {}
+
+    # Animated star particles for the loading background
+    ldr_stars = [[random.randint(0, WIDTH), random.randint(0, HEIGHT),
+                  random.uniform(0.3, 1.5), random.randint(60, 200)] for _ in range(120)]
+
+    clock = pygame.time.Clock()
+
+    # Start loading BGM immediately
+    try:
+        pygame.mixer.music.load("game_assets/loading.mp3")
+        pygame.mixer.music.play(-1)
+    except:
+        pass
+
+    label_text  = "Initializing..."
+    done_count  = 0
+    pulse_t     = 0       # for pulsing glow on bar
+    particle_t  = 0       # for floating particles on bar
+
+    for idx, (label, task_fn) in enumerate(tasks):
+        label_text = label
+
+        # ---- Do the real work ----
+        results[idx] = task_fn()
+        done_count   = idx + 1
+
+        # ---- Render one frame of the loading screen ----
+        pygame.event.pump()           # keep OS happy
+        progress_frac = done_count / total
+        pulse_t += 0.08
+
+        # Background
+        screen.blit(loading_bg, (0, 0))
+        dark_ovr = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        dark_ovr.fill((0, 0, 20, 185))
+        screen.blit(dark_ovr, (0, 0))
+
+        # Animated stars
+        for s in ldr_stars:
+            s[1] += s[2]
+            if s[1] > HEIGHT:
+                s[0] = random.randint(0, WIDTH)
+                s[1] = 0
+            alpha = min(255, s[3])
+            r = max(1, int(s[2] * 1.5))
+            col = (int(120 + 135 * (s[3] / 255)), int(180 + 75 * (s[3] / 255)), 255)
+            pygame.draw.circle(screen, col, (int(s[0]), int(s[1])), r)
+
+        # Title
+        draw_text("CRAZYY SIMULATION", FONT_TITLE, CYAN, WIDTH // 2, 190)
+
+        # Subtle sub-title glow
+        import math as _math
+        glow_alpha = int(140 + 110 * _math.sin(pulse_t))
+        subtitle_col = (glow_alpha, glow_alpha, 255)
+        draw_text("INITIALIZING GAME SYSTEMS", FONT_MODAL_SUB, subtitle_col, WIDTH // 2, 235)
+
+        # ---- Progress bar track ----
+        bar_x, bar_y, bar_w, bar_h = 140, 310, 520, 22
+        bar_radius = 11
+
+        # Track shadow
+        pygame.draw.rect(screen, (5, 5, 20), (bar_x + 3, bar_y + 3, bar_w, bar_h), border_radius=bar_radius)
+        # Track background
+        pygame.draw.rect(screen, (30, 35, 55), (bar_x, bar_y, bar_w, bar_h), border_radius=bar_radius)
+        # Track inner border
+        pygame.draw.rect(screen, (60, 70, 100), (bar_x, bar_y, bar_w, bar_h), width=1, border_radius=bar_radius)
+
+        # Filled portion
+        fill_w = int(bar_w * progress_frac)
+        if fill_w > 4:
+            # Gradient: cyan → blue
+            fill_surf = pygame.Surface((fill_w, bar_h), pygame.SRCALPHA)
+            for px in range(fill_w):
+                t = px / max(fill_w - 1, 1)
+                r = int(0   + 0   * t)
+                g = int(230 - 120 * t)
+                b = int(255)
+                pygame.draw.line(fill_surf, (r, g, b, 230), (px, 0), (px, bar_h))
+            # Clip to rounded rect shape
+            mask_surf = pygame.Surface((fill_w, bar_h), pygame.SRCALPHA)
+            pygame.draw.rect(mask_surf, (255, 255, 255, 255), (0, 0, fill_w, bar_h), border_radius=bar_radius)
+            fill_surf.blit(mask_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+            screen.blit(fill_surf, (bar_x, bar_y))
+
+            # Pulse glow shimmer at tip
+            shimmer_x = bar_x + fill_w - 12
+            shimmer_alpha = int(100 + 100 * _math.sin(pulse_t * 3))
+            if shimmer_alpha > 0 and fill_w > 20:
+                sh_surf = pygame.Surface((28, bar_h), pygame.SRCALPHA)
+                for px in range(28):
+                    a = max(0, shimmer_alpha - abs(px - 14) * 12)
+                    pygame.draw.line(sh_surf, (255, 255, 255, a), (px, 0), (px, bar_h))
+                screen.blit(sh_surf, (shimmer_x, bar_y))
+
+        # Percentage text
+        pct_str = f"{int(progress_frac * 100)}%"
+        draw_text(pct_str, FONT_UI, WHITE, WIDTH // 2, bar_y + bar_h + 26)
+
+        # Status label
+        draw_text(label_text, FONT_SMALL, (160, 200, 255), WIDTH // 2, bar_y + bar_h + 60)
+
+        # Step counter  e.g. "12 / 28"
+        draw_text(f"{done_count} / {total}", FONT_HP, (100, 130, 180), WIDTH // 2, bar_y + bar_h + 86)
+
+        pygame.display.flip()
+        clock.tick(60)
+
+    # Final flash to white
+    for alpha in range(0, 255, 18):
+        screen.blit(loading_bg, (0, 0))
+        flash = pygame.Surface((WIDTH, HEIGHT))
+        flash.fill((255, 255, 255))
+        flash.set_alpha(alpha)
+        screen.blit(flash, (0, 0))
+        pygame.display.flip()
+        pygame.time.wait(12)
+
+    return results
+
+
+# ==========================================
+# RUN LOADING — results stored in _load_results
+# ==========================================
+_load_results = run_loading_screen()
+
+# ==========================================
+# UNPACK LOADED ASSETS INTO GLOBAL NAMES
+# ==========================================
+_i = 0
+galaxy_bg        = _load_results[_i]; _i += 1
+nebula_bg        = _load_results[_i]; _i += 1
+stars_bg         = _load_results[_i]; _i += 1
+blackhole_bg     = _load_results[_i]; _i += 1
+menu_bg          = _load_results[_i]; _i += 1
+
+player_img       = _load_results[_i]; _i += 1
+fighter_img      = _load_results[_i]; _i += 1
+elite_img        = _load_results[_i]; _i += 1
+heavy_img        = _load_results[_i]; _i += 1
+
+boss_surfs = {}
+for _tier in range(1, 9):
+    boss_surfs[_tier] = _load_results[_i]; _i += 1
+
+coin_icon        = _load_results[_i]; _i += 1
+star_for_rating  = _load_results[_i]; _i += 1
+lock_icon        = _load_results[_i]; _i += 1
+asteroid_img     = _load_results[_i]; _i += 1
+
+shoot_snd        = _load_results[_i]; _i += 1
+hit_snd          = _load_results[_i]; _i += 1
+expl_snd         = _load_results[_i]; _i += 1
+boss_expl_snd    = _load_results[_i]; _i += 1
+tap_snd          = _load_results[_i]; _i += 1
+game_won_snd     = _load_results[_i]; _i += 1
+game_loose_snd   = _load_results[_i]; _i += 1
+
+_bgm_paths       = _load_results[_i]; _i += 1
+loading_bgm      = _bgm_paths["loading"]
+game_bgm_main    = _bgm_paths["main"]
+game_bgm_fast    = _bgm_paths["fast"]
+
+bullet_img = pygame.Surface((6, 15))
+bullet_img.fill(BLUE)
+
+del _load_results, _i, _bgm_paths, _tier
 
 # --- Variables ---
 kill_count = 0
-state = -1
 total_coins = 0
 unlocked_hp, hp_step = 200, 0
 unlocked_speed, speed_step = 7, 0
@@ -91,12 +321,6 @@ galaxy_bg_y = 0.0
 galaxy_bg_speed = 0.05
 bg_height = galaxy_bg.get_height()
 
-load_progress = 0
-load_pause_timer = 0
-# Loading speed slow kar di hai taaki 9-10 seconds lage
-load_speed = random.uniform(1.2, 1.4)
-stutter_points = [60, 150, 220, 280]  # Loading rukne ke points
-
 store_selection = None
 current_level, selected_level = 1, 1
 player_health = 200
@@ -110,7 +334,6 @@ boss_hp, boss_max_hp = 100, 100
 boss_death_timer = 0
 
 asteroid_group = pygame.sprite.Group()
-asteroid_img = pygame.image.load("game_assets/asteroid.png").convert_alpha()
 
 # Spawning logic variables
 asteroids_spawned = 0
@@ -139,18 +362,16 @@ bg_y2 = -HEIGHT
 bg_scroll_speed = 1.5
 
 # States definition
-STATE_LOADING = -1
-STATE_MAIN_MENU = 0
-STATE_ENV_SELECT = 20
+STATE_MAIN_MENU   = 0
+STATE_ENV_SELECT  = 20
 STATE_LEVEL_SELECT = 1
-state = STATE_LOADING
 
 # --- Colors Definition ---
-BRAND_RED = (200, 20, 20)
+BRAND_RED  = (200, 20, 20)
 BRAND_GOLD = (230, 190, 80)
 BRAND_GLOW = (255, 100, 100, 100)
 
-# --- BRANDING ANIMATION VARIABLES ---
+# --- Start at branding animation (assets are already loaded) ---
 state = -2
 anim_time = pygame.time.get_ticks()
 anim_duration = 2000
@@ -524,34 +745,9 @@ while running:
             # Move shine sweep using dt
             anim_shine_x += 18 * dt
 
-            # --- TRANSITION TO LOADING SCREEN ---
+            # --- TRANSITION STRAIGHT TO MAIN MENU (real loading already done) ---
         if anim_progress >= anim_duration:
-            state = -1  # Go to loading state
-            load_progress = 0  # reset loading tracker
-
-    # ==========================
-    # LOADING SCREEN (STATE -1)
-    # ==========================
-
-    if state == -1:
-        draw_text("CRAZYY SIMULATION", FONT_TITLE, CYAN, 400, 250)
-        pygame.draw.rect(screen, LIGHT_GRAY, (250, 350, 300, 20), border_radius=10)
-
-        is_stuttering = False
-        for sp in stutter_points:
-            if int(load_progress) == sp and load_pause_timer < 80:
-                load_pause_timer += 1
-                is_stuttering = True
-                break
-        if not is_stuttering:
-            load_progress += load_speed
-            load_pause_timer = 0
-
-        final_w = min(300, int(load_progress))
-        pygame.draw.rect(screen, GREEN, (250, 350, final_w, 20), border_radius=min(10, final_w // 2))
-        draw_text("Loading...", FONT_SMALL, WHITE, 400, 390)
-        if load_progress >= 300:
-            state = 0
+            state = 0  # Go straight to main menu
 
     # ==========================
     # MAIN MENU (STATE 0)
