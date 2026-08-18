@@ -1,5 +1,7 @@
 # Crazyy Simulation
 
+**Repository:** [https://github.com/iambkram/Crazyy-Simulation](https://github.com/iambkram/Crazyy-Simulation)
+
 A top-down arcade space shooter built with Python and Pygame. Navigate through various cosmic environments, battle waves of enemy ships, defeat powerful bosses, and upgrade your ship using collected coins.
 
 ## Features
@@ -44,4 +46,4 @@ A top-down arcade space shooter built with Python and Pygame. Navigate through v
 
 ## License
 
-This project is for educational and entertainment purposes.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
