@@ -303,6 +303,8 @@ def load_game():
                 sfx_vol = data.get("sfx_vol", 0.7)
                 pygame.mixer.music.set_volume(music_vol)
                 shoot_snd.set_volume(sfx_vol)
+                game_won_snd.set_volume(sfx_vol)
+                game_loose_snd.set_volume(sfx_vol)
                 tap_snd = pygame.mixer.Sound("game_assets/tap.mp3")
                 tap_snd.set_volume(sfx_vol)
                 boss_expl_snd.set_volume(sfx_vol)
@@ -369,7 +371,8 @@ def update_coins(amount):
 
 # --- SAVE/LOAD SYSTEM ke niche ---
 def reset_match():
-    global asteroids_spawned_in_match
+    global asteroids_spawned, asteroids_spawned_in_match
+    asteroids_spawned = 0
     asteroids_spawned_in_match = 0
     asteroid_group.empty() # Saare purane asteroids saaf ho jayenge
 
@@ -1459,7 +1462,7 @@ while running:
                         env3_unlocked = True
                     elif current_selected_env == 3 and current_level == max_blackhole_level and max_blackhole_level < 40:
                         max_blackhole_level += 1
-                        save_game()
+                    save_game()
             else:
                 if boss_rect.top < 70:
                     boss_rect.y += 2
@@ -1547,6 +1550,11 @@ while running:
                     if hit:
                         break
 
+            # Remove off-screen player bullets (Prevents memory leak)
+            if not hit and b['rect'].bottom < 0:
+                if b in bullets:
+                    bullets.remove(b)
+
         # Powerups Spawning
         if random.randint(1, 700) == 1:
             t = random.choice(['immortal', 'double'])
@@ -1565,7 +1573,7 @@ while running:
                 tap_snd.play()
                 if a in achievements:
                     achievements.remove(a)
-            elif a['rect'].top > HEIGHT:
+            elif a['rect'].top > HEIGHT or a['rect'].bottom < 0 or a['rect'].right < 0 or a['rect'].left > WIDTH:
                 if a in achievements:
                     achievements.remove(a)
 
