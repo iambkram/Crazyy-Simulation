@@ -222,7 +222,7 @@ def execute_installation_step(step_idx):
             os.makedirs(install_path, exist_ok=True)
             install_progress = 0.25
         elif step_idx == 2:
-            install_logs.append(">> Copying core game scripts & assets...")
+            install_logs.append(">> Copying core game scripts & modules...")
             # Copy all game python scripts
             py_files = ["main.py", "settings.py", "assets.py", "branding.py", "menu_battle.py", "vfx.py"]
             for f in py_files:
@@ -232,13 +232,27 @@ def execute_installation_step(step_idx):
             # Copy icon
             if os.path.exists(os.path.join(SOURCE_DIR, "icon.ico")):
                 shutil.copy2(os.path.join(SOURCE_DIR, "icon.ico"), os.path.join(install_path, "icon.ico"))
-            # Copy game_assets
+            # Copy native Windows executable
+            if os.path.exists(os.path.join(SOURCE_DIR, "Crazyy-Simulation.exe")):
+                shutil.copy2(os.path.join(SOURCE_DIR, "Crazyy-Simulation.exe"), os.path.join(install_path, "Crazyy-Simulation.exe"))
+
+            # Safe copy game_assets without rmtree to prevent WinError 32
+            install_logs.append(">> Deploying audiovisual game assets...")
             src_assets = os.path.join(SOURCE_DIR, "game_assets")
             dst_assets = os.path.join(install_path, "game_assets")
             if os.path.exists(src_assets):
-                if os.path.exists(dst_assets):
-                    shutil.rmtree(dst_assets)
-                shutil.copytree(src_assets, dst_assets)
+                os.makedirs(dst_assets, exist_ok=True)
+                for root, dirs, files in os.walk(src_assets):
+                    rel_dir = os.path.relpath(root, src_assets)
+                    target_dir = os.path.join(dst_assets, rel_dir) if rel_dir != "." else dst_assets
+                    os.makedirs(target_dir, exist_ok=True)
+                    for file in files:
+                        src_file = os.path.join(root, file)
+                        dst_file = os.path.join(target_dir, file)
+                        try:
+                            shutil.copy2(src_file, dst_file)
+                        except Exception:
+                            pass
             install_progress = 0.55
         elif step_idx == 3:
             install_logs.append(">> Initializing game save profile & configuration...")
@@ -254,32 +268,33 @@ def execute_installation_step(step_idx):
                     json.dump(default_save, sf, indent=4)
             install_progress = 0.70
         elif step_idx == 4:
-            install_logs.append(">> Generating Crazyy-Simulation Windows launcher...")
-            # Create a clean Windows launcher script
+            install_logs.append(">> Configuring Crazyy-Simulation Windows launcher...")
+            # Save exact Python runtime path for launcher
+            cfg_file = os.path.join(install_path, "python_path.txt")
+            with open(cfg_file, "w") as pf:
+                pf.write(sys.executable)
+
+            # Create standard batch launcher fallback
             launcher_bat = os.path.join(install_path, "Crazyy-Simulation.bat")
-            python_exe = sys.executable
             with open(launcher_bat, "w") as bf:
-                bf.write(f'@echo off\ncd /d "{install_path}"\nstart "" "{python_exe}" main.py\nexit\n')
-            
-            launcher_vbs = os.path.join(install_path, "Crazyy-Simulation.vbs")
-            with open(launcher_vbs, "w") as vf:
-                vf.write(f'Set WshShell = CreateObject("WScript.Shell")\n'
-                         f'WshShell.CurrentDirectory = "{install_path}"\n'
-                         f'WshShell.Run """{python_exe}"" main.py", 0, False\n')
+                bf.write(f'@echo off\ncd /d "{install_path}"\nstart "" "{sys.executable}" main.py\nexit\n')
+
             install_progress = 0.85
         elif step_idx == 5:
             icon_file = os.path.join(install_path, "icon.ico")
-            vbs_launcher = os.path.join(install_path, "Crazyy-Simulation.vbs")
+            exe_target = os.path.join(install_path, "Crazyy-Simulation.exe")
+            if not os.path.exists(exe_target):
+                exe_target = os.path.join(install_path, "Crazyy-Simulation.bat")
             
             if opt_desktop_icon:
-                install_logs.append(">> Creating Desktop Shortcut on Windows...")
+                install_logs.append(">> Creating Windows Desktop Shortcut...")
                 d_lnk = os.path.join(DESKTOP_DIR, "Crazyy Simulation.lnk")
-                create_windows_shortcut(vbs_launcher, d_lnk, icon_file, install_path)
+                create_windows_shortcut(exe_target, d_lnk, icon_file, install_path)
                 
             if opt_start_menu:
                 install_logs.append(">> Registering in Windows Start Menu & App Search...")
                 s_lnk = os.path.join(START_MENU_DIR, "Crazyy Simulation.lnk")
-                create_windows_shortcut(vbs_launcher, s_lnk, icon_file, install_path)
+                create_windows_shortcut(exe_target, s_lnk, icon_file, install_path)
                 
             install_logs.append(">> Setup completed successfully! All files verified.")
             install_progress = 1.0
@@ -538,10 +553,10 @@ while running:
                 running = False
             elif btn_next_rect.collidepoint(mx, my):
                 if opt_launch_game:
-                    # Launch the game
-                    vbs_launcher = os.path.join(install_path, "Crazyy-Simulation.vbs")
-                    if os.path.exists(vbs_launcher):
-                        os.startfile(vbs_launcher)
+                    # Launch the game via native Windows executable
+                    exe_launcher = os.path.join(install_path, "Crazyy-Simulation.exe")
+                    if os.path.exists(exe_launcher):
+                        os.startfile(exe_launcher)
                     else:
                         subprocess.Popen([sys.executable, "main.py"], cwd=install_path)
                 running = False
