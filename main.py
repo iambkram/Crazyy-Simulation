@@ -28,6 +28,7 @@ pygame.display.set_caption("Crazyy Simulation")
 
 # Import only fonts and helper functions from assets (no heavy images yet)
 from assets import *
+from branding import CinematicBranding
 
 # ==========================================
 # MINIMAL BOOTSTRAP ASSETS (tiny, needed before loading screen)
@@ -367,29 +368,10 @@ STATE_MAIN_MENU   = 0
 STATE_ENV_SELECT  = 20
 STATE_LEVEL_SELECT = 1
 
-# --- Colors Definition ---
-BRAND_RED  = (200, 20, 20)
-BRAND_GOLD = (230, 190, 80)
-BRAND_GLOW = (255, 100, 100, 100)
-
 # --- Start at branding animation (assets are already loaded) ---
 state = -2
-anim_time = pygame.time.get_ticks()
-anim_duration = 2000
-anim_played = False
-anim_flash_alpha = 0
-anim_logo_scale = 1.0
-anim_text_alpha = 0
-anim_text_y = HEIGHT + 50
-anim_shine_x = -300
+branding_anim = CinematicBranding()
 last_frame_ticks = pygame.time.get_ticks()
-
-brand_logo_placeholder = pygame.Surface((200, 200), pygame.SRCALPHA)
-pygame.draw.circle(brand_logo_placeholder, BRAND_RED, (100, 100), 80)
-pygame.draw.polygon(brand_logo_placeholder, WHITE, [(50,150), (100,50), (150,150)])
-
-brand_text_placeholder = pygame.font.SysFont("Impact", 80).render("TEXT", True, WHITE)
-brand_text_y_target = 480
 
 SAVE_FILE = "save.json"
 
@@ -678,80 +660,25 @@ while running:
                 m_u = True
 
     # ==========================================
-    # 🔥 3. BRANDING ANIMATION (STATE -2) BEST QUALITY 🔥
+    # 🔥 3. CINEMATIC NEON BRANDING (STATE -2) 🔥
     # ==========================================
     if state == -2:
-        # Start sound only once
-        if not anim_played:
-            # Sound "game_assets/tap.mp3" reuse kar raha hoon, baad mein load_snd kar lena Professional startup sound
-            tap_snd.play()
-            anim_played = True
+        branding_anim.update_and_draw(
+            screen, dt, now,
+            tap_snd=tap_snd,
+            hit_snd=hit_snd,
+            expl_snd=expl_snd
+        )
 
-        # Calculate animation timeline
-        anim_progress = pygame.time.get_ticks() - anim_time
+        # Allow instant skip via mouse click or Space/Enter/Escape keys
+        keys = pygame.key.get_pressed()
+        if m_c or keys[pygame.K_SPACE] or keys[pygame.K_RETURN] or keys[pygame.K_ESCAPE]:
+            branding_anim.skip()
 
-        # --- PHASE 1: FLASH & LOGO ENTRY (0s - 0.5s) ---
-        if 0 < anim_progress < 500:
-            # FLASH EFFECT (Fades out over 0.5s)
-            flash_alpha = int(255 - (anim_progress / 500 * 255))
-            flash_surf = pygame.Surface((WIDTH, HEIGHT))
-            flash_surf.fill(BRAND_RED)
-            flash_surf.set_alpha(max(0, flash_alpha))
-            screen.blit(flash_surf, (0, 0))
-
-            # LOGO ENTRY (Scale down and Fade In)
-            entry_logo_surf = pygame.transform.scale(brand_logo_placeholder,
-                                                         (int(200 * max(0.2, anim_logo_scale)),
-                                                          int(200 * max(0.2, anim_logo_scale))))
-            entry_logo_rect = entry_logo_surf.get_rect(center=(WIDTH // 2, HEIGHT // 2))
-            screen.blit(entry_logo_surf, entry_logo_rect)
-
-            # Smoothly change variables using Delta Time (dt)
-            anim_logo_scale = max(0.1, anim_logo_scale - 0.03 * dt)
-
-            # --- PHASE 2: LOGO HOLD & TEXT ENTRY (0.5s - 1.2s) ---
-        elif 500 <= anim_progress < 1200:
-            # LOGO HOLD (Normal size)
-            final_logo_rect = brand_logo_placeholder.get_rect(center=(WIDTH // 2, 280))  # Upper position
-            screen.blit(brand_logo_placeholder, final_logo_rect)
-
-            # TEXT ENTRY (Fades In and moves Up)
-            current_brand_text = pygame.font.SysFont("Impact", 80).render("BIKRAM", True, BRAND_GOLD)
-            current_brand_text.set_alpha(min(255, anim_text_alpha))
-            text_rect = current_brand_text.get_rect(center=(WIDTH // 2, int(anim_text_y)))
-            screen.blit(current_brand_text, text_rect)
-
-            # Smooth movement logic using dt
-            anim_text_alpha = min(255, anim_text_alpha + 15 * dt)
-            anim_text_y = max(brand_text_y_target, anim_text_y - 8 * dt)
-
-        # --- PHASE 3: TEXT GLOW & SWEEP & FADE OUT (1.2s - 2.0s) ---
-        elif 1200 <= anim_progress < anim_duration:
-            # LOGO HOLD (Upper position)
-            final_logo_rect = brand_logo_placeholder.get_rect(center=(WIDTH // 2, 280))
-            screen.blit(brand_logo_placeholder, final_logo_rect)
-
-            # TEXT HOLD (Glowing Gold color)
-            current_brand_text = pygame.font.SysFont("Impact", 80).render("BIKRAM", True, BRAND_GOLD)
-            text_rect = current_brand_text.get_rect(center=(WIDTH // 2, brand_text_y_target))
-            screen.blit(current_brand_text, text_rect)
-
-            # --- SHINE SWEEP EFFECT ---
-            # Shiny reddish/white sweep passing over text
-            shine_surf = pygame.Surface((300, 100), pygame.SRCALPHA)
-            pygame.draw.rect(shine_surf, (255, 255, 255, 150), (0, 0, 150, 100))  # Simple shininess structure
-            shine_surf.set_alpha(100)  # transparency
-
-            screen.set_clip(text_rect)  # Only draw shine within text boundaries
-            screen.blit(shine_surf, (anim_shine_x, brand_text_y_target - 50))
-            screen.set_clip(None)  # Remove clipping
-
-            # Move shine sweep using dt
-            anim_shine_x += 18 * dt
-
-            # --- TRANSITION STRAIGHT TO MAIN MENU (real loading already done) ---
-        if anim_progress >= anim_duration:
-            state = 0  # Go straight to main menu
+        if branding_anim.is_finished():
+            state = 0  # Transition smoothly into Main Menu
+            click_cooldown = 12
+            m_c = False
 
     # ==========================
     # MAIN MENU (STATE 0)
@@ -812,7 +739,7 @@ while running:
                     m_c = False
 
         # ---- VERSION TAG ----
-        draw_text("v2.0  |  @iambkram", FONT_TINY, (50, 70, 100), 400, 583)
+        draw_text("v1.0.0  |  @iambkram", FONT_TINY, (50, 70, 100), 400, 583)
 
         # ---- CONTROL CONFIGURATION WARNING POPUP ----
         if show_settings_warning:
