@@ -571,7 +571,8 @@ def reset_level_logic(level):
     boss_defeated_timer = 0
     boss_death_timer = 0
 
-    boss_max_hp = 250 + (current_level * 100)
+    # Boss HP significantly increased to prevent 1-7 bullet kills on early levels
+    boss_max_hp = 800 + (current_level * 150)
     boss_hp = boss_max_hp
 
     # ==========================================
@@ -1593,32 +1594,34 @@ while running:
             screen.blit(blackhole_bg, (0, 0))
 
             overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 220))
+            overlay.fill((0, 0, 20, 210))
             screen.blit(overlay, (0, 0))
 
-            alert_box = pygame.Rect(70, 55, 660, 490)
-            draw_panel(screen, alert_box, alpha=250, bg_color=(25, 12, 30), border_color=(255, 60, 120), border_width=3, border_radius=22)
+            alert_box = pygame.Rect(90, 80, 620, 480)
+            draw_neon_panel(screen, alert_box, accent=NEON_PINK, alpha=250, border_radius=22, bg=(25,12,18))
 
-            draw_text("GRAVITATIONAL HAZARD", FONT_MODAL_TITLE, (255, 60, 80), 400, 105)
-            draw_text("BLACK HOLE SINGULARITY DETECTED", FONT_MODAL_SUB, CYAN, 400, 145)
+            draw_text_shadow("⚠ GRAVITATIONAL HAZARD", FONT_MODAL_TITLE, NEON_PINK, 400, 115, shadow_color=(80,0,0), offset=2)
+            draw_text("BLACK HOLE SINGULARITY DETECTED", FONT_TINY, NEON_CYAN, 400, 150)
+            draw_divider(screen, 130, 168, 670, NEON_PINK, alpha=50)
 
             warnings = [
-                ("[1] Massive Singularity:", "Extreme gravity pulls all ships and matter to the center!"),
-                ("[2] Relativistic Time Dilation:", "All ship navigation, lasers, and combat speeds are slowed down."),
-                ("[3] Event Horizon Collapse:", "Falling into the center will shrink and crush your starship!"),
-                ("[4] Active Thruster Defense:", "Use [W, A, S, D] / Touch controls with fast reflexes to resist!")
+                ("⚫ Massive Singularity", "Extreme gravity pulls all ships and matter to the center!"),
+                ("⏳ Relativistic Time",    "All ship navigation, lasers, and combat speeds are slowed down."),
+                ("💥 Event Horizon",        "Falling into the center will crush your starship!"),
+                ("🚀 Active Defense",       "Use continuous sliding / WASD reflexes to resist gravity.")
             ]
 
             for idx, (head, body) in enumerate(warnings):
-                card_rect = pygame.Rect(95, 180 + idx * 62, 610, 52)
-                pygame.draw.rect(screen, (40, 15, 40), card_rect, border_radius=10)
-                pygame.draw.rect(screen, (120, 40, 80), card_rect, width=1, border_radius=10)
-                draw_text(head, FONT_SMALL, (255, 220, 100) if idx == 2 else YELLOW, card_rect.left + 15, card_rect.centery - 10, center=False)
-                draw_text(body, FONT_SMALL, WHITE, card_rect.left + 15, card_rect.centery + 12, center=False)
+                card_rect = pygame.Rect(115, 185 + idx * 64, 570, 56)
+                pygame.draw.rect(screen, PANEL_MID, card_rect, border_radius=12)
+                pygame.draw.rect(screen, NEON_PINK, card_rect, width=1, border_radius=12)
+                pygame.draw.rect(screen, NEON_PINK, pygame.Rect(115, 195 + idx * 64, 3, 36), border_radius=2)
+                draw_text(head, FONT_SMALL, NEON_GOLD, 400, card_rect.y + 18)
+                draw_text(body, FONT_SMALL, LIGHT_GRAY, 400, card_rect.y + 40)
 
-            btn_engage = pygame.Rect(250, 445, 300, 52)
+            btn_engage = pygame.Rect(250, 465, 300, 56)
             is_h_eng = btn_engage.collidepoint(mx, my)
-            draw_button(screen, "ENGAGE THRUSTERS", FONT_UI, WHITE, btn_engage, (190, 30, 90), is_h_eng, outline_color=CYAN)
+            draw_glowing_button(screen, "🚀 ENGAGE THRUSTERS", FONT_UI, WHITE, btn_engage, NEON_PINK, is_h_eng, accent=RED, pulse_t=ui_pulse_t)
 
             if m_c and is_h_eng:
                 tap_snd.play()
@@ -1636,6 +1639,14 @@ while running:
         is_blackhole = (current_selected_env == 3)
         env_speed_mult = 0.68 if is_blackhole else 1.0
         eff_player_speed = max(3.0, unlocked_speed * env_speed_mult)
+
+        # Calculate mouse delta for mobile relative control
+        if 'prev_mx' not in globals():
+            global prev_mx, prev_my
+            prev_mx, prev_my = mx, my
+        mouse_dx = mx - prev_mx
+        mouse_dy = my - prev_my
+        prev_mx, prev_my = mx, my
 
         # --- SMART CONTROLS LOGIC ---
         if fire_cooldown > 0:
@@ -1659,16 +1670,13 @@ while running:
 
         elif control_type == 'MOBILE':
             if mouse_pressed and not is_h_pause:
-                target_x = max(player_rect.width // 2, min(WIDTH - player_rect.width // 2, mx))
-                target_y = max(100, min(HEIGHT - 40, my - 35))
-
-                dx = target_x - player_rect.centerx
-                dy = target_y - player_rect.centery
-                dist = math.hypot(dx, dy)
-                if dist > 1.5:
-                    step = min(dist, eff_player_speed)
-                    player_rect.x += int((dx / dist) * step)
-                    player_rect.y += int((dy / dist) * step)
+                if not m_c: # Ignore the very first frame to prevent teleporting
+                    dist = math.hypot(mouse_dx, mouse_dy)
+                    if dist > 0:
+                        # Cap movement to eff_player_speed per frame so fast slides don't increase speed
+                        step = min(dist, eff_player_speed)
+                        player_rect.x += int((mouse_dx / dist) * step)
+                        player_rect.y += int((mouse_dy / dist) * step)
 
                 if fire_cooldown <= 0:
                     is_firing = True
