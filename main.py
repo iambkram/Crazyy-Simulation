@@ -30,6 +30,7 @@ pygame.display.set_caption("Crazyy Simulation")
 from assets import *
 from branding import CinematicBranding
 from menu_battle import MenuBattleSimulation
+from vfx import VisualEffectsEngine
 
 # ==========================================
 # MINIMAL BOOTSTRAP ASSETS (tiny, needed before loading screen)
@@ -297,6 +298,11 @@ menu_battle_sim = MenuBattleSimulation({
     'hit_snd': hit_snd
 })
 
+# ==========================================
+# VISUAL EFFECTS ENGINE (Thrusters & Supernova Boss Cataclysm)
+# ==========================================
+vfx_engine = VisualEffectsEngine()
+
 # --- Variables ---
 kill_count = 0
 total_coins = 0
@@ -477,9 +483,9 @@ class Asteroid(pygame.sprite.Sprite):
 
 
 def get_revive_price(level, revives_done):
+    """Calculate revive cost based on sector tier and number of revives used."""
     if 1 <= level <= 10:
         prices = [100, 200, 400, 800, 1000]
-        # Agar revives_done list ke andar hai, toh wo price do, warna 1000 ke baad fix ya aur badhana hai
         if revives_done < len(prices):
             return prices[revives_done]
         else:
@@ -493,10 +499,10 @@ def get_revive_price(level, revives_done):
             return 1000 + (revives_done - 2) * 500  # 1000, 1500, 2000...
 
     elif 31 <= level <= 40:
-        # 500 se start, aur har baar double (500, 1000, 2000, 4000...)
+        # Exponential scaling for master tier sectors
         return 500 * (2 ** revives_done)
 
-    return 100  # Fallback safety ke liye
+    return 100  # Safe fallback cost
 
 def load_game():
     global music_vol, sfx_vol, tap_snd
@@ -518,49 +524,56 @@ def load_game():
                 max_galaxy_level = 40
                 max_nebula_level = 40
                 max_blackhole_level = 40
-                
-                env2_unlocked = True
-                env3_unlocked = True
-                
                 control_type = data.get("control_type", 'PC')
-                if not control_type:
-                    control_type = 'PC'
                 music_vol = data.get("music_vol", 0.5)
                 sfx_vol = data.get("sfx_vol", 0.7)
+                env2_unlocked = data.get("env2_unlocked", False)
+                env3_unlocked = data.get("env3_unlocked", False)
+
+                if music_vol is None: music_vol = 0.5
+                if sfx_vol is None: sfx_vol = 0.7
+
                 pygame.mixer.music.set_volume(music_vol)
-                shoot_snd.set_volume(sfx_vol)
-                game_won_snd.set_volume(sfx_vol)
-                game_loose_snd.set_volume(sfx_vol)
-                tap_snd = pygame.mixer.Sound("game_assets/tap.mp3")
                 tap_snd.set_volume(sfx_vol)
-                boss_expl_snd.set_volume(sfx_vol)
                 expl_snd.set_volume(sfx_vol)
                 hit_snd.set_volume(sfx_vol)
+                boss_expl_snd.set_volume(sfx_vol)
+                game_won_snd.set_volume(sfx_vol)
+                game_loose_snd.set_volume(sfx_vol)
         except Exception as e:
-            print("Save file load error:", e)
+            print("Error loading game:", e)
 
 
 def reset_level_logic(level):
-    global player_health, fighters, elites, heavies, bullets, enemy_bullets, achievements, particles, level_coins
-    global boss_active, boss_arriving, boss_warning_timer, boss_defeated_timer
+    global current_level, player_health, player_rect, bullets, enemy_bullets
+    global fighters, elites, heavies, achievements, particles
     global boss_hp, boss_max_hp, boss_death_timer, current_level, boss_rect, kill_count
-    global current_boss_img
-    global win_snd_played, loose_snd_played
-    global blackhole_alert_active
-    win_snd_played = False
-    loose_snd_played = False
-    blackhole_alert_active = (current_selected_env == 3)
+    global boss_active, boss_arriving, boss_target_x, current_boss_img
+    global boss_warning_timer, boss_defeated_timer
+    global blackhole_alert_active, revive_protection_timer
     global galaxy_bg_y
+
     galaxy_bg_y = 0.0
-    global revives_done_this_level
-    revives_done_this_level = 0
 
     current_level = level
-    kill_count = 0
     player_health = unlocked_hp
-    player_rect.center = (WIDTH // 2, HEIGHT - 60)
-    fighters, elites, heavies, bullets, enemy_bullets, achievements, particles = [], [], [], [], [], [], []
-    level_coins = 0
+    player_rect.center = (WIDTH // 2, HEIGHT - 70)
+
+    bullets.clear()
+    enemy_bullets.clear()
+    fighters.clear()
+    elites.clear()
+    heavies.clear()
+    achievements.clear()
+    particles.clear()
+    vfx_engine.reset_boss_effects()
+
+    # Reset Black Hole alert popup for sector 3
+    blackhole_alert_active = (current_selected_env == 3)
+    revive_protection_timer = 0
+
+    kill_count = 0
+    boss_target_x = WIDTH // 2
 
     reset_match()
 
@@ -570,22 +583,13 @@ def reset_level_logic(level):
     boss_defeated_timer = 0
     boss_death_timer = 0
 
-    # Boss HP significantly increased to prevent 1-7 bullet kills on early levels
+    # Boss HP scaling
     boss_max_hp = 800 + (current_level * 150)
     boss_hp = boss_max_hp
 
-    # ==========================================
-    # 🔥 BOSS SCALING & IMAGE LOGIC FIXED 🔥
-    # ==========================================
-    # 1. Calculate tier (1-8) based on current_level (1-40)
-    # Lvl 1-5 -> Tier 1, Lvl 6-10 -> Tier 2, ..., Lvl 36-40 -> Tier 8
-    boss_tier = ((current_level - 1) // 5) + 1
-    boss_tier = min(boss_tier, 8)  # Cap at tier 8
-
-    # 2. Get pre-scaled boss image based on calculated tier
+    # Tier calculation based on level (1-40)
+    boss_tier = min(((current_level - 1) // 5) + 1, 8)
     current_boss_img = boss_surfs.get(boss_tier, boss_surfs[1])
-
-    # 3. Create Hitbox (Rect) exactly matching the current pre-scaled image size
     boss_rect = current_boss_img.get_rect(center=(WIDTH // 2, -150))
 
     for s in skills: skills[s]['active'] = False
@@ -596,15 +600,15 @@ def update_coins(amount):
     level_coins += amount
     save_game()
 
-# --- SAVE/LOAD SYSTEM ke niche ---
 def reset_match():
+    """Reset match entity counts and clear asteroid groups."""
     global asteroids_spawned, asteroids_spawned_in_match
     asteroids_spawned = 0
     asteroids_spawned_in_match = 0
-    asteroid_group.empty() # Saare purane asteroids saaf ho jayenge
+    asteroid_group.empty()
 
-# --- Anti-Overlap Logic ---
 def check_enemy_spawn(new_rect, all_enemies):
+    """Check collision against existing enemies to prevent spawn overlap."""
     for e in all_enemies:
         if new_rect.colliderect(e['rect']):
             return False
@@ -632,7 +636,6 @@ while running:
     # ==========================================
     # GLOBAL MUSIC CONTROLLER
     # ==========================================
-
     if state == -2:
         target_bgm = None
     elif state == -1:
@@ -645,17 +648,17 @@ while running:
 
     if target_bgm == "loading" and current_bgm != "loading":
         pygame.mixer.music.load(loading_bgm)
-        pygame.mixer.music.play(0)  # 0 ka matlab sirf ek baar play hoga
+        pygame.mixer.music.play(0)  # Single playback
         current_bgm = "loading"
     elif target_bgm == "fast" and current_bgm != "fast":
         pygame.mixer.music.load(game_bgm_fast)
-        pygame.mixer.music.play(-1) # -1 ka matlab loop mein play hoga
+        pygame.mixer.music.play(-1) # Loop playback
         current_bgm = "fast"
     elif target_bgm == "main" and current_bgm != "main":
         pygame.mixer.music.load(game_bgm_main)
-        pygame.mixer.music.play(-1) # -1 ka matlab loop mein play hoga
+        pygame.mixer.music.play(-1) # Loop playback
         current_bgm = "main"
-    # ==========================================
+    # =============================================================
 
     m_c = False
     m_u = False
@@ -1870,6 +1873,9 @@ while running:
                         enemy_bullets.append({'rect': pygame.Rect(e['rect'].left + 5, e['rect'].bottom - 5, 8, 14), 'damage': dmg, 'color': YELLOW})
                         enemy_bullets.append({'rect': pygame.Rect(e['rect'].right - 13, e['rect'].bottom - 5, 8, 14), 'damage': dmg, 'color': YELLOW})
 
+                # Emit thrusters for active enemies
+                vfx_engine.emit_enemy_thruster(e['rect'].centerx, e['rect'].top, e_type)
+
                 # Collision with Player
                 if e['rect'].colliderect(player_rect):
                     if e in e_list:
@@ -1883,14 +1889,14 @@ while running:
                     if e in e_list:
                         e_list.remove(e)
 
-        # Boss Logic
+        # Emit player ship engine thrusters
+        vfx_engine.emit_player_thruster(player_rect.centerx, player_rect.bottom)
+
+        # Boss Logic & Thrusters
         if boss_active:
             if boss_death_timer > 0:
                 boss_death_timer -= 1
-                if boss_death_timer % 4 == 0:
-                    for _ in range(30):
-                        p_color = random.choice(BLAST_COLORS)
-                        particles.append([boss_rect.centerx + random.randint(-40, 40), boss_rect.centery + random.randint(-30, 30), random.uniform(-8, 8), random.uniform(-8, 8), random.randint(5, 14), p_color])
+                vfx_engine.update_and_draw_boss_death(screen, boss_rect, current_boss_img, boss_death_timer, expl_snd)
                 if boss_death_timer == 1:
                     boss_active = False
                     boss_defeated_timer = 120
@@ -1905,6 +1911,8 @@ while running:
                         max_blackhole_level += 1
                     save_game()
             else:
+                vfx_engine.emit_boss_thrusters(boss_rect)
+
                 if boss_rect.top < 70:
                     boss_rect.y += 2
 
@@ -1929,6 +1937,9 @@ while running:
                     enemy_bullets.append({'rect': pygame.Rect(bullet_x, bullet_y, 12, 22), 'damage': 10 * boss_eff_damage, 'color': RED})
 
         # --- DRAWING & COLLISIONS ---
+        # Render all ship thrusters beneath hull sprites
+        vfx_engine.update_and_draw_thrusters(screen)
+
         # Enemy Bullets
         eb_speed = int(6 * env_speed_mult)
         for eb in enemy_bullets[:]:
@@ -1960,7 +1971,8 @@ while running:
                     if b in bullets:
                         bullets.remove(b)
                     if boss_hp <= 0:
-                        boss_death_timer = 150
+                        boss_death_timer = 180
+                        vfx_engine.reset_boss_effects()
                         update_coins(100 + current_level * 50)
                     hit = True
 
@@ -1975,7 +1987,6 @@ while running:
                             if e['hp'] <= 0:
                                 if e in e_list:
                                     e_list.remove(e)
-                                # Beginner-friendly generous coin drops
                                 update_coins(2 if c_val == 1 else 4 if c_val == 2 else 8)
                                 kill_count += 1
                                 expl_snd.play()
