@@ -59,7 +59,7 @@ max_galaxy_level = 1
 max_nebula_level = 1
 max_blackhole_level = 1
 level_scroll_y = 0
-control_type = None
+control_type = 'PC'
 show_settings_warning = False
 fire_cooldown = 0
 music_vol = 0.5
@@ -296,7 +296,9 @@ def load_game():
                 env2_unlocked = True
                 env3_unlocked = True
                 
-                control_type = data.get("control_type", None) # Load control type
+                control_type = data.get("control_type", 'PC')
+                if not control_type:
+                    control_type = 'PC'
                 music_vol = data.get("music_vol", 0.5)
                 sfx_vol = data.get("sfx_vol", 0.7)
                 pygame.mixer.music.set_volume(music_vol)
@@ -340,7 +342,7 @@ def reset_level_logic(level):
     boss_defeated_timer = 0
     boss_death_timer = 0
 
-    boss_max_hp = 500 + (current_level * 150)
+    boss_max_hp = 250 + (current_level * 100)
     boss_hp = boss_max_hp
 
     # ==========================================
@@ -584,19 +586,35 @@ while running:
 
         # WARNING POPUP DRAWING
         if show_settings_warning:
-            warn_rect = pygame.Rect(150, 200, 500, 200)
-            draw_panel(screen, warn_rect, alpha=240, border_color=RED)
+            overlay_w = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            overlay_w.fill((0, 0, 0, 210))
+            screen.blit(overlay_w, (0, 0))
 
-            draw_text("Please select your device", FONT_MSG, WHITE, 400, 250)
-            draw_text("in the SETTINGS first!", FONT_UI, YELLOW, 400, 290)
+            warn_rect = pygame.Rect(130, 180, 540, 240)
+            draw_panel(screen, warn_rect, alpha=245, bg_color=(20, 25, 35), border_color=CYAN, border_width=3, border_radius=20)
 
-            ok_btn = pygame.Rect(340, 330, 120, 50)
-            is_h_ok = ok_btn.collidepoint(mx, my)
-            draw_button(screen, "OK", FONT_UI, WHITE, ok_btn, GREEN, is_h_ok)
+            draw_text("CONTROL CONFIGURATION", FONT_MSG, CYAN, 400, 225)
+            draw_text("Select your preferred device (PC / Mobile) in Settings.", FONT_SMALL, WHITE, 400, 275)
+            draw_text("Defaulting to PC (WASD + Space auto-fire).", FONT_SMALL, YELLOW, 400, 305)
 
-            if m_c and is_h_ok:
-                tap_snd.play()
-                show_settings_warning = False
+            btn_set = pygame.Rect(170, 345, 210, 50)
+            btn_ok = pygame.Rect(420, 345, 210, 50)
+
+            is_h_set = btn_set.collidepoint(mx, my)
+            is_h_ok = btn_ok.collidepoint(mx, my)
+
+            draw_button(screen, "SETTINGS", FONT_UI, WHITE, btn_set, ORANGE, is_h_set)
+            draw_button(screen, "CONTINUE (PC)", FONT_UI, WHITE, btn_ok, GREEN, is_h_ok)
+
+            if m_c:
+                if is_h_set:
+                    tap_snd.play()
+                    show_settings_warning = False
+                    state = 9
+                elif is_h_ok:
+                    tap_snd.play()
+                    control_type = 'PC'
+                    show_settings_warning = False
 
 
     # ==========================
@@ -766,15 +784,24 @@ while running:
         overlay.fill((0, 0, 0, 200))
         screen.blit(overlay, (0, 0))
 
-        info_box = pygame.Rect(150, 150, 500, 300)
-        draw_panel(screen, info_box, alpha=230, border_color=MAGENTA)
+        info_box = pygame.Rect(100, 80, 600, 440)
+        draw_panel(screen, info_box, alpha=245, border_color=MAGENTA, border_width=3, border_radius=20)
 
-        draw_text("PC CONTROLS", FONT_MSG, CYAN, 400, 190)
-        draw_text("Use Arrows or 'A','D' to Move.", FONT_UI, WHITE, 400, 270)
-        draw_text("Left Click to Fire Bullets.", FONT_UI, WHITE, 400, 320)
+        draw_text("PC FLIGHT COMMANDS", FONT_MSG, CYAN, 400, 125)
+
+        instructions = [
+            ("• Flight Navigation:", "Use [W, A, S, D] or [Arrow Keys] for 2D maneuvering & dodging."),
+            ("• Weapons Barrage:", "Hold [SPACEBAR] or [Left Mouse Button] for rapid auto-fire."),
+            ("• Tactical Powerups:", "Collect [S] for Energy Shield & [2X] for Dual Laser Spread."),
+            ("• Singularity Hazard:", "In Black Hole environments, resist gravitational pull with thrusters!")
+        ]
+
+        for idx, (head, body) in enumerate(instructions):
+            draw_text(head, FONT_SMALL, YELLOW, 400, 180 + idx * 60)
+            draw_text(body, FONT_SMALL, WHITE, 400, 205 + idx * 60)
 
         mx, my = pygame.mouse.get_pos()
-        btn_ok = pygame.Rect(310, 380, 180, 50)
+        btn_ok = pygame.Rect(300, 435, 200, 50)
         is_h_ok = btn_ok.collidepoint(mx, my)
         draw_button(screen, "GOT IT", FONT_UI, WHITE, btn_ok, GREEN, is_h_ok)
 
@@ -791,15 +818,24 @@ while running:
         overlay.fill((0, 0, 0, 200))
         screen.blit(overlay, (0, 0))
 
-        info_box = pygame.Rect(150, 150, 500, 300)
-        draw_panel(screen, info_box, alpha=230, border_color=BLUE)
+        info_box = pygame.Rect(100, 80, 600, 440)
+        draw_panel(screen, info_box, alpha=245, border_color=BLUE, border_width=3, border_radius=20)
 
-        draw_text("MOBILE CONTROLS", FONT_MSG, CYAN, 400, 190)
-        draw_text("Slide Finger across screen", FONT_UI, WHITE, 400, 270)
-        draw_text("to Move & Auto-Fire.", FONT_UI, WHITE, 400, 320)
+        draw_text("MOBILE TOUCH COMMANDS", FONT_MSG, CYAN, 400, 125)
+
+        m_instructions = [
+            ("• Touch Navigation:", "Slide your finger anywhere on screen to steer your starship."),
+            ("• Auto-Firing:", "Rapid pulse cannons automatically fire while touching screen."),
+            ("• Tactical Powerups:", "Touch [S] Shield and [2X] Double Shot floating energy orbs."),
+            ("• Singularity Hazard:", "Steer away from the black hole center to avoid collapse!")
+        ]
+
+        for idx, (head, body) in enumerate(m_instructions):
+            draw_text(head, FONT_SMALL, YELLOW, 400, 180 + idx * 60)
+            draw_text(body, FONT_SMALL, WHITE, 400, 205 + idx * 60)
 
         mx, my = pygame.mouse.get_pos()
-        btn_ok = pygame.Rect(310, 380, 180, 50)
+        btn_ok = pygame.Rect(300, 435, 200, 50)
         is_h_ok = btn_ok.collidepoint(mx, my)
         draw_button(screen, "GOT IT", FONT_UI, WHITE, btn_ok, GREEN, is_h_ok)
 
@@ -1026,21 +1062,21 @@ while running:
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        box_rect = pygame.Rect(180, 160, 440, 280)
+        box_rect = pygame.Rect(160, 150, 480, 300)
         draw_panel(screen, box_rect, alpha=240, border_color=CYAN)
 
         env_names = {1: "GALAXY SECTOR", 2: "NEBULA ZONE", 3: "BLACKHOLE HORIZON"}
         curr_env_title = env_names.get(current_selected_env, "GALAXY SECTOR")
 
-        draw_text(curr_env_title, FONT_UI, CYAN, 400, 200)
-        draw_text(f"MISSION {selected_level}", FONT_MSG, YELLOW, 400, 245)
+        draw_text(curr_env_title, FONT_UI, CYAN, 400, 195)
+        draw_text(f"MISSION {selected_level}", FONT_MSG, YELLOW, 400, 240)
 
-        boss_kill_reqs = {1: 50, 2: 100, 3: 100, 4: 150, 5: 150, 6: 200, 7: 200, 8: 200, 9: 200, 10: 200}
-        req_k = 250 if selected_level >= 11 else boss_kill_reqs.get(selected_level, 200)
-        draw_text(f"Eliminate {req_k} Enemies to summon Boss", FONT_SMALL, WHITE, 400, 300)
+        boss_kill_reqs = {1: 15, 2: 20, 3: 25, 4: 35, 5: 45, 6: 60, 7: 75, 8: 90, 9: 105, 10: 120}
+        req_k = min(200, 120 + (selected_level - 10) * 4) if selected_level >= 11 else boss_kill_reqs.get(selected_level, 25)
+        draw_text(f"Eliminate {req_k} Enemies to summon Sector Boss", FONT_SMALL, WHITE, 400, 295)
 
-        b_r = pygame.Rect(210, 350, 180, 55)
-        b_a = pygame.Rect(410, 350, 180, 55)
+        b_r = pygame.Rect(190, 360, 190, 55)
+        b_a = pygame.Rect(420, 360, 190, 55)
 
         mx, my = pygame.mouse.get_pos()
         is_h_r = b_r.collidepoint(mx, my)
@@ -1070,7 +1106,7 @@ while running:
         is_h_pause = pause_btn_rect.collidepoint(mx, my)
 
         # ----------------------------------------------------
-        # ⚠ BLACKHOLE STARTING WARNING POPUP ⚠
+        # ⚠ BLACKHOLE STARTING WARNING POPUP (FIXED SIZING) ⚠
         # ----------------------------------------------------
         if blackhole_alert_active:
             screen.blit(blackhole_bg, (0, 0))
@@ -1079,24 +1115,24 @@ while running:
             overlay.fill((0, 0, 0, 210))
             screen.blit(overlay, (0, 0))
 
-            alert_box = pygame.Rect(100, 90, 600, 420)
+            alert_box = pygame.Rect(70, 75, 660, 450)
             draw_panel(screen, alert_box, alpha=245, bg_color=(25, 12, 30), border_color=(255, 60, 120), border_width=3, border_radius=22)
 
-            draw_text("⚠ GRAVITATIONAL HAZARD ⚠", FONT_TITLE, (255, 60, 80), 400, 140)
-            draw_text("BLACK HOLE EVENT HORIZON DETECTED", FONT_UI, CYAN, 400, 190)
+            draw_text("⚠ GRAVITATIONAL HAZARD ⚠", FONT_MSG, (255, 60, 80), 400, 125)
+            draw_text("BLACK HOLE SINGULARITY DETECTED", FONT_UI, CYAN, 400, 175)
 
             warnings = [
-                "• Extreme Gravity: All ships & asteroids are pulled toward the singularity center!",
-                "• Relativistic Time Dilation: Ship and combat navigation speeds are slowed down.",
-                "• Singularity Hazard: Getting sucked into the center will shrink & destroy your ship!",
-                "• Resistance: Use WASD / Arrows with quick reflexes to counteract the pull!"
+                ("• Extreme Gravity:", "All ships & asteroids are continuously dragged toward the center!"),
+                ("• Relativistic Time Dilation:", "All ship navigation, bullets, and combat speeds are slowed down."),
+                ("• Singularity Hazard:", "Getting sucked to the center will shrink & crush your ship into oblivion!"),
+                ("• Active Thrusters:", "Use [W, A, S, D] / [Arrows] with quick reflexes to resist the collapse!")
             ]
 
-            for idx, w_txt in enumerate(warnings):
-                col = (255, 220, 100) if idx == 2 else WHITE
-                draw_text(w_txt, FONT_SMALL, col, 400, 240 + idx * 34)
+            for idx, (head, body) in enumerate(warnings):
+                draw_text(head, FONT_SMALL, (255, 220, 100) if idx == 2 else YELLOW, 400, 225 + idx * 52)
+                draw_text(body, FONT_SMALL, WHITE, 400, 247 + idx * 52)
 
-            btn_engage = pygame.Rect(260, 415, 280, 55)
+            btn_engage = pygame.Rect(260, 445, 280, 50)
             is_h_eng = btn_engage.collidepoint(mx, my)
             draw_button(screen, "ENGAGE THRUSTERS", FONT_UI, WHITE, btn_engage, (190, 30, 90), is_h_eng, outline_color=CYAN)
 
@@ -1122,7 +1158,6 @@ while running:
         is_firing = False
 
         if control_type == 'PC':
-            # Horizontal + Vertical Movement for dodging
             if (keys[pygame.K_a] or keys[pygame.K_LEFT]) and player_rect.left > 0:
                 player_rect.x -= eff_player_speed
             if (keys[pygame.K_d] or keys[pygame.K_RIGHT]) and player_rect.right < WIDTH:
@@ -1132,7 +1167,6 @@ while running:
             if (keys[pygame.K_s] or keys[pygame.K_DOWN]) and player_rect.bottom < HEIGHT - 10:
                 player_rect.y += eff_player_speed
 
-            # Hold SPACE or Mouse Click to auto-fire
             if (keys[pygame.K_SPACE] or (mouse_pressed and not is_h_pause)) and fire_cooldown <= 0:
                 is_firing = True
                 fire_cooldown = 9 if is_blackhole else (8 if current_level <= 15 else 6)
@@ -1257,16 +1291,52 @@ while running:
 
         all_enemies_objs = fighters + elites + heavies
 
-        # --- SMART DIFFICULTY ENGINE ---
+        # --- PROGRESSIVE BEGINNER-FRIENDLY DIFFICULTY TUNING ---
         eff_speed_lvl = min(current_level, 10)
-        eff_dmg_lvl = min(current_level, 5)
+        eff_dmg_lvl = min(current_level, 3)
 
-        spawn_chance = max(10, int(45 - (current_level * 0.9)))
-        fire_chance = max(25, int(110 - (current_level * 2.0)))
-
-        max_fighters = int(7 + (current_level * 0.5))
-        max_elites = int(4 + (current_level * 0.3))
-        max_heavies = int(2 + (current_level * 0.2))
+        if current_level == 1:
+            max_fighters = 3
+            max_elites = 0
+            max_heavies = 0
+            spawn_chance = 75
+            fire_chance = 180
+        elif current_level == 2:
+            max_fighters = 4
+            max_elites = 1
+            max_heavies = 0
+            spawn_chance = 65
+            fire_chance = 160
+        elif current_level == 3:
+            max_fighters = 5
+            max_elites = 2
+            max_heavies = 0  # No heavies on lvl 3!
+            spawn_chance = 55
+            fire_chance = 140
+        elif current_level == 4:
+            max_fighters = 5
+            max_elites = 2
+            max_heavies = 0  # No heavies on lvl 4!
+            spawn_chance = 50
+            fire_chance = 130
+        elif current_level == 5:
+            max_fighters = 6
+            max_elites = 3
+            max_heavies = 1  # 1 heavy gently introduced
+            spawn_chance = 45
+            fire_chance = 115
+        elif current_level <= 10:
+            max_fighters = int(5 + current_level * 0.3)
+            max_elites = int(2 + current_level * 0.2)
+            max_heavies = int(1 + current_level * 0.15)
+            spawn_chance = max(25, int(50 - current_level * 1.5))
+            fire_chance = max(50, int(130 - current_level * 3.5))
+        else:
+            max_fighters = min(10, int(7 + current_level * 0.2))
+            max_elites = min(6, int(4 + current_level * 0.15))
+            max_heavies = min(4, int(2 + current_level * 0.1))
+            spawn_chance = max(15, int(40 - current_level * 0.6))
+            fire_chance = max(30, int(95 - current_level * 1.5))
 
         # --- SPAWN EXECUTION ---
         if not boss_active and not boss_arriving and boss_defeated_timer == 0:
@@ -1278,12 +1348,14 @@ while running:
             if current_level >= 2 and len(elites) < max_elites and random.randint(1, int(spawn_chance * 1.4)) == 1:
                 nr = elite_img.get_rect(center=(random.randint(50, WIDTH - 50), -50))
                 if check_enemy_spawn(nr, all_enemies_objs):
-                    elites.append({'rect': nr, 'hp': 3, 'max_hp': 3, 'start_x': nr.x, 'time': random.randint(0, 50), 'type': 'elite'})
+                    e_hp = 2 if current_level <= 5 else 3
+                    elites.append({'rect': nr, 'hp': e_hp, 'max_hp': e_hp, 'start_x': nr.x, 'time': random.randint(0, 50), 'type': 'elite'})
 
-            if current_level >= 3 and len(heavies) < max_heavies and random.randint(1, int(spawn_chance * 2.2)) == 1:
+            if current_level >= 5 and len(heavies) < max_heavies and random.randint(1, int(spawn_chance * 2.2)) == 1:
                 nr = heavy_img.get_rect(center=(random.randint(60, WIDTH - 60), -60))
                 if check_enemy_spawn(nr, all_enemies_objs):
-                    heavies.append({'rect': nr, 'hp': 8, 'max_hp': 8, 'start_x': nr.x, 'time': 0, 'type': 'heavy'})
+                    h_hp = 5 if current_level <= 9 else 8
+                    heavies.append({'rect': nr, 'hp': h_hp, 'max_hp': h_hp, 'start_x': nr.x, 'time': 0, 'type': 'heavy'})
 
         # --- ENEMY MOVEMENT, COMBAT & BLACKHOLE GRAVITATIONAL PULL ---
         for e_list, val, e_type in [(fighters, 1, 'fighter'), (elites, 2, 'elite'), (heavies, 5, 'heavy')]:
@@ -1445,7 +1517,7 @@ while running:
                         bullets.remove(b)
                     if boss_hp <= 0:
                         boss_death_timer = 150
-                        update_coins(current_level * 50)
+                        update_coins(100 + current_level * 50)
                     hit = True
 
             if not hit:
@@ -1459,7 +1531,8 @@ while running:
                             if e['hp'] <= 0:
                                 if e in e_list:
                                     e_list.remove(e)
-                                update_coins(1 if c_val == 1 else 2 if c_val == 2 else 5)
+                                # Beginner-friendly generous coin drops
+                                update_coins(2 if c_val == 1 else 4 if c_val == 2 else 8)
                                 kill_count += 1
                                 expl_snd.play()
 
@@ -1642,12 +1715,9 @@ while running:
                 else:
                     s_val['active'] = False
 
-        # Boss Spawning Condition
-        if current_level >= 11:
-            req_kills = 250
-        else:
-            boss_kill_reqs = {1: 50, 2: 100, 3: 100, 4: 150, 5: 150, 6: 200, 7: 200, 8: 200, 9: 200, 10: 200}
-            req_kills = boss_kill_reqs.get(current_level, 200)
+        # Boss Spawning Condition (Beginner-friendly kill scaling)
+        boss_kill_reqs = {1: 15, 2: 20, 3: 25, 4: 35, 5: 45, 6: 60, 7: 75, 8: 90, 9: 105, 10: 120}
+        req_kills = min(200, 120 + (current_level - 10) * 4) if current_level >= 11 else boss_kill_reqs.get(current_level, 25)
 
         if kill_count >= req_kills and not boss_active and not boss_arriving and boss_defeated_timer == 0:
             boss_arriving = True
@@ -1767,88 +1837,95 @@ while running:
     # ==========================
     elif state == 4 or state == 5:
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
+        overlay.fill((0, 0, 0, 200))
         screen.blit(overlay, (0, 0))
 
-        box = pygame.Rect(140, 120, 520, 400)
-        draw_panel(screen, box, alpha=240, border_color=GREEN if state == 4 else RED)
-
-        if state == 4:
-            draw_text("VICTORY!", FONT_TITLE, GREEN, 400, 175)
-            draw_text(f"+{level_coins} Coins Earned", FONT_UI, YELLOW, 400, 220)
-        else:
-            draw_text("MISSION FAILED", FONT_TITLE, RED, 400, 175)
-            draw_text("Ship Destroyed in Combat", FONT_UI, LIGHT_GRAY, 400, 220)
-
-        # Star Rating on Victory
-        if state == 4:
-            earned_stars = 3 if kill_count >= 20 else (2 if kill_count >= 10 else 1)
-            star_icon = pygame.transform.scale(star_for_rating, (46, 46))
-            start_x = 400 - ((earned_stars * 52) // 2) + 5
-            for i in range(earned_stars):
-                screen.blit(star_icon, (start_x + (i * 52), 255))
-
-        b_m = pygame.Rect(180, 330, 180, 55)
-        b_n = pygame.Rect(440, 330, 180, 55)
-
         mx, my = pygame.mouse.get_pos()
-        is_h_m = b_m.collidepoint(mx, my)
-        is_h_n = b_n.collidepoint(mx, my)
 
-        draw_button(screen, "MAIN MENU", FONT_UI, WHITE, b_m, BLUE, is_h_m)
-        draw_button(screen, "NEXT LEVEL" if state == 4 else "RETRY", FONT_UI, WHITE, b_n, GREEN if state == 4 else ORANGE, is_h_n)
+        # State 5: Confirmation Modal for Revive (Clean Dedicated View - No Ghosting)
+        if state == 5 and show_revive_confirm:
+            p_box = pygame.Rect(140, 150, 520, 300)
+            draw_panel(screen, p_box, alpha=250, bg_color=(25, 20, 30), border_color=YELLOW, border_width=3, border_radius=20)
 
-        # Revive System in Game Over
-        if state == 5:
-            if not show_revive_confirm:
+            draw_text("CONFIRM REVIVE?", FONT_MSG, YELLOW, 400, 195)
+            c_price = get_revive_price(current_level, revives_done_this_level)
+            draw_text("Restore 100% HP & clear active hazards", FONT_SMALL, WHITE, 400, 250)
+            
+            can_afford = total_coins >= c_price
+            cost_color = GREEN if can_afford else RED
+            draw_text(f"Price: {c_price} Coins  |  Your Coins: {total_coins}", FONT_SMALL, cost_color, 400, 285)
+
+            b_back = pygame.Rect(180, 360, 190, 50)
+            b_buy = pygame.Rect(430, 360, 190, 50)
+
+            is_h_rbk = b_back.collidepoint(mx, my)
+            is_h_rbuy = b_buy.collidepoint(mx, my)
+
+            draw_button(screen, "CANCEL", FONT_UI, WHITE, b_back, RED, is_h_rbk)
+            draw_button(screen, f"{c_price} COINS", FONT_UI, BLACK if can_afford else WHITE, b_buy, GREEN if can_afford else DARK_GRAY, is_h_rbuy)
+
+            if m_c:
+                if is_h_rbk:
+                    tap_snd.play()
+                    show_revive_confirm = False
+                elif is_h_rbuy and can_afford:
+                    total_coins -= c_price
+                    revives_done_this_level += 1
+                    player_health = unlocked_hp
+                    revive_protection_timer = 180
+                    bullets.clear()
+                    fighters.clear()
+                    elites.clear()
+                    heavies.clear()
+                    enemy_bullets.clear()
+
+                    for _ in range(60):
+                        particles.append([player_rect.centerx, player_rect.centery, random.uniform(-10, 10), random.uniform(-10, 10), random.randint(6, 12), CYAN])
+
+                    tap_snd.play()
+                    state = 3
+                    show_revive_confirm = False
+
+        # Regular Victory / Defeat Modal
+        else:
+            box = pygame.Rect(140, 120, 520, 400)
+            draw_panel(screen, box, alpha=240, border_color=GREEN if state == 4 else RED)
+
+            if state == 4:
+                draw_text("VICTORY!", FONT_TITLE, GREEN, 400, 175)
+                draw_text(f"+{level_coins} Coins Earned", FONT_UI, YELLOW, 400, 220)
+            else:
+                draw_text("MISSION FAILED", FONT_TITLE, RED, 400, 175)
+                draw_text("Ship Destroyed in Combat", FONT_UI, LIGHT_GRAY, 400, 220)
+
+            # Star Rating on Victory
+            if state == 4:
+                earned_stars = 3 if kill_count >= 20 else (2 if kill_count >= 10 else 1)
+                star_icon = pygame.transform.scale(star_for_rating, (46, 46))
+                start_x = 400 - ((earned_stars * 52) // 2) + 5
+                for i in range(earned_stars):
+                    screen.blit(star_icon, (start_x + (i * 52), 255))
+
+            b_m = pygame.Rect(180, 330, 180, 55)
+            b_n = pygame.Rect(440, 330, 180, 55)
+
+            is_h_m = b_m.collidepoint(mx, my)
+            is_h_n = b_n.collidepoint(mx, my)
+
+            draw_button(screen, "MAIN MENU", FONT_UI, WHITE, b_m, BLUE, is_h_m)
+            draw_button(screen, "NEXT LEVEL" if state == 4 else "RETRY", FONT_UI, WHITE, b_n, GREEN if state == 4 else ORANGE, is_h_n)
+
+            # Revive button on Game Over
+            if state == 5:
                 rev_b = pygame.Rect(280, 415, 240, 55)
                 is_h_rev = rev_b.collidepoint(mx, my)
                 draw_button(screen, "⚡ REVIVE SHIP ⚡", FONT_UI, BLACK, rev_b, YELLOW, is_h_rev, outline_color=WHITE)
 
-            elif show_revive_confirm:
-                p_box = pygame.Rect(160, 220, 480, 220)
-                draw_panel(screen, p_box, alpha=250, border_color=YELLOW)
-
-                draw_text("CONFIRM REVIVE?", FONT_MSG, YELLOW, 400, 260)
-                c_price = get_revive_price(current_level, revives_done_this_level)
-                draw_text(f"Restore full HP for {c_price} coins", FONT_SMALL, WHITE, 400, 310)
-
-                b_back = pygame.Rect(200, 360, 160, 45)
-                b_buy = pygame.Rect(420, 360, 180, 45)
-
-                is_h_rbk = b_back.collidepoint(mx, my)
-                is_h_rbuy = b_buy.collidepoint(mx, my)
-
-                draw_button(screen, "CANCEL", FONT_UI, WHITE, b_back, RED, is_h_rbk)
-                can_afford = total_coins >= c_price
-                draw_button(screen, f"{c_price} COINS", FONT_UI, BLACK if can_afford else WHITE, b_buy, GREEN if can_afford else DARK_GRAY, is_h_rbuy)
-
-        if m_c:
-            if state == 5 and show_revive_confirm:
-                if b_back.collidepoint(mx, my):
+                if m_c and is_h_rev:
                     tap_snd.play()
-                    show_revive_confirm = False
-                elif b_buy.collidepoint(mx, my):
-                    price = get_revive_price(current_level, revives_done_this_level)
-                    if total_coins >= price:
-                        total_coins -= price
-                        revives_done_this_level += 1
-                        player_health = unlocked_hp
-                        revive_protection_timer = 180
-                        bullets.clear()
-                        fighters.clear()
-                        elites.clear()
-                        heavies.clear()
-                        enemy_bullets.clear()
+                    show_revive_confirm = True
 
-                        for _ in range(60):
-                            particles.append([player_rect.centerx, player_rect.centery, random.uniform(-10, 10), random.uniform(-10, 10), random.randint(6, 12), CYAN])
-
-                        tap_snd.play()
-                        state = 3
-                        show_revive_confirm = False
-
-            else:
+            if m_c:
                 if is_h_m:
                     tap_snd.play()
                     level_coins = 0
@@ -1866,9 +1943,6 @@ while running:
                         reset_level_logic(selected_level)
                         tap_snd.play()
                         state = 3
-                elif state == 5 and not show_revive_confirm and rev_b.collidepoint(mx, my):
-                    tap_snd.play()
-                    show_revive_confirm = True
 
     pygame.display.flip()
     clock.tick(60)
