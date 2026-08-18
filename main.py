@@ -95,6 +95,7 @@ stutter_points = [60, 150, 220, 280]  # Loading rukne ke points
 store_selection = None
 current_level, selected_level = 1, 1
 player_health = 200
+blackhole_alert_active = False
 
 # Boss Timers and States
 boss_active, boss_arriving = False, False
@@ -104,12 +105,11 @@ boss_hp, boss_max_hp = 100, 100
 boss_death_timer = 0
 
 asteroid_group = pygame.sprite.Group()
-asteroid_img = pygame.image.load("game_assets/asteroid.png").convert_alpha() # 2D model load karo
+asteroid_img = pygame.image.load("game_assets/asteroid.png").convert_alpha()
 
 # Spawning logic variables
 asteroids_spawned = 0
 spawn_timer = 0
-# Random interval (e.g., har 3 se 7 seconds mein ek spawn hoga)
 next_spawn_time = random.randint(3000, 7000)
 last_spawn_tick = pygame.time.get_ticks()
 
@@ -125,52 +125,44 @@ player_rect = player_img.get_rect(center=(WIDTH // 2, HEIGHT - 60))
 boss_rect = pygame.Rect(0, 0, 0, 0)
 boss_target_x = WIDTH // 2
 
-# ✅ REPLACE KARO is line se (x, y, speed, max_brightness)
-stars = [[random.randint(0, WIDTH), random.randint(0, HEIGHT), random.uniform(5.0, 12.0), random.randint(100, 255)] for _ in range(150)]
+# Stars Initialization
+stars = [[random.randint(0, WIDTH), random.randint(0, HEIGHT), random.uniform(4.0, 10.0), random.randint(100, 255)] for _ in range(160)]
 
 # --- Background Scrolling Variables ---
 bg_y1 = 0
-bg_y2 = -HEIGHT  # Dusri image screen ke thik upar rahegi
-bg_scroll_speed = 1.5  # Isse speed kam-zyada kar sakte ho
+bg_y2 = -HEIGHT
+bg_scroll_speed = 1.5
 
 # States definition
 STATE_LOADING = -1
 STATE_MAIN_MENU = 0
-STATE_ENV_SELECT = 20 # 🔥 Naya state defined
+STATE_ENV_SELECT = 20
 STATE_LEVEL_SELECT = 1
-# ... rest of states
-state = STATE_LOADING # Start as loading
+state = STATE_LOADING
 
 # --- Colors Definition ---
 BRAND_RED = (200, 20, 20)
 BRAND_GOLD = (230, 190, 80)
-BRAND_GLOW = (255, 100, 100, 100) # Alpha included (Reddish Glow)
+BRAND_GLOW = (255, 100, 100, 100)
 
 # --- BRANDING ANIMATION VARIABLES ---
-# Naya state defined: state -2 branding ke liye hai
 state = -2
-# Animation Timeline (miliseconds mein)
 anim_time = pygame.time.get_ticks()
-# Branding control variables
-anim_duration = 2000 # Total anim duration is strictly 2 seconds
+anim_duration = 2000
 anim_played = False
 anim_flash_alpha = 0
-anim_logo_scale = 1.0 # Logo scale from 1.0 down
+anim_logo_scale = 1.0
 anim_text_alpha = 0
-anim_text_y = HEIGHT + 50 # Start below screen
-anim_shine_x = -300 # Shine sweep starting position
-last_frame_ticks = pygame.time.get_ticks() # For Delta Time
+anim_text_y = HEIGHT + 50
+anim_shine_x = -300
+last_frame_ticks = pygame.time.get_ticks()
 
-# --- PLACEHOLDER ASSETS (Ye main.py mein temporary hain taaki run ho) ---
-# Tum inko baad mein replace kar lena
-# temporary logo
 brand_logo_placeholder = pygame.Surface((200, 200), pygame.SRCALPHA)
 pygame.draw.circle(brand_logo_placeholder, BRAND_RED, (100, 100), 80)
-pygame.draw.polygon(brand_logo_placeholder, WHITE, [(50,150), (100,50), (150,150)]) # simple shield shape
+pygame.draw.polygon(brand_logo_placeholder, WHITE, [(50,150), (100,50), (150,150)])
 
-# temporary glowing text structure
 brand_text_placeholder = pygame.font.SysFont("Impact", 80).render("TEXT", True, WHITE)
-brand_text_y_target = 480 # Center target position for text
+brand_text_y_target = 480
 
 SAVE_FILE = "save.json"
 
@@ -196,47 +188,66 @@ def save_game():
 
 
 class Asteroid(pygame.sprite.Sprite):
-    def __init__(self, asteroid_img):
+    def __init__(self, asteroid_img, env=1):
         super().__init__()
-
-        # 1. ERROR FIX: random.choice mein SQUARE brackets [ ] lagane hote hain
-        scale_factor = random.choice([1, 1.5, 2])
-        base_size = 50
+        scale_factor = random.choice([1, 1.4, 1.8])
+        base_size = 46
         new_size = int(base_size * scale_factor)
 
-        # 2. ERROR FIX: scale function mein size ko ek saath () mein dena hota hai
-        # Yahan hum original_image save kar rahe hain taaki ghumte waqt image fite nahi
         self.original_image = pygame.transform.scale(asteroid_img, (new_size, new_size))
         self.image = self.original_image.copy()
         self.rect = self.image.get_rect()
+        self.env = env
 
-        # 3. Position aur Speed
-        self.rect.x = random.randint(0, WIDTH - self.rect.width)
-        self.rect.y = -self.rect.height
-        self.speed = random.randint(3, 6)
+        if env == 3:
+            # Spawn along outer screen periphery in Black Hole environment
+            side = random.choice(['top', 'left', 'right', 'bottom'])
+            if side == 'top':
+                self.pos_x = float(random.randint(0, WIDTH - self.rect.width))
+                self.pos_y = float(-self.rect.height)
+            elif side == 'left':
+                self.pos_x = float(-self.rect.width)
+                self.pos_y = float(random.randint(0, HEIGHT - self.rect.height))
+            elif side == 'right':
+                self.pos_x = float(WIDTH)
+                self.pos_y = float(random.randint(0, HEIGHT - self.rect.height))
+            else:
+                self.pos_x = float(random.randint(0, WIDTH - self.rect.width))
+                self.pos_y = float(HEIGHT)
+            self.speed = random.uniform(1.0, 2.2)
+        else:
+            self.pos_x = float(random.randint(0, WIDTH - self.rect.width))
+            self.pos_y = float(-self.rect.height)
+            self.speed = random.uniform(3.0, 5.5)
 
-        # 4. ROTATION ke variables (Dheere ghumne ke liye)
+        self.rect.x = int(self.pos_x)
+        self.rect.y = int(self.pos_y)
         self.angle = 0
-        self.rot_speed = random.uniform(-1.0, 1.0)  # Koi left ghumega koi right
+        self.rot_speed = random.uniform(-1.0, 1.0)
 
     def update(self):
-        # Niche aane ki speed
-        self.rect.y += self.speed
+        if self.env == 3:
+            # Gravitational pull towards singularity at (400, 300)
+            center_x = self.pos_x + self.original_image.get_width() / 2.0
+            center_y = self.pos_y + self.original_image.get_height() / 2.0
+            dx = 400 - center_x
+            dy = 300 - center_y
+            dist = math.hypot(dx, dy)
+            if dist < 26:
+                self.kill()
+                return
+            pull = self.speed + (90.0 / (dist + 50.0))
+            self.pos_x += (dx / dist) * pull
+            self.pos_y += (dy / dist) * pull
+        else:
+            self.pos_y += self.speed
+            if self.pos_y > HEIGHT:
+                self.kill()
+                return
 
-        # ROTATION LOGIC:
         self.angle += self.rot_speed
-
-        # Har baar original image ko rotate karo
         self.image = pygame.transform.rotate(self.original_image, self.angle)
-
-        # Asteroid ko uski jagah par hi ghumane ke liye center set karna zaroori hai
-        old_center = self.rect.center
-        self.rect = self.image.get_rect()
-        self.rect.center = old_center
-
-        # Screen se bahar jaye to delete
-        if self.rect.y > HEIGHT:
-            self.kill()
+        self.rect = self.image.get_rect(center=(int(self.pos_x + self.original_image.get_width() / 2), int(self.pos_y + self.original_image.get_height() / 2)))
 
 
 def get_revive_price(level, revives_done):
@@ -303,10 +314,12 @@ def reset_level_logic(level):
     global player_health, fighters, elites, heavies, bullets, enemy_bullets, achievements, particles, level_coins
     global boss_active, boss_arriving, boss_warning_timer, boss_defeated_timer
     global boss_hp, boss_max_hp, boss_death_timer, current_level, boss_rect, kill_count
-    global current_boss_img  # 🔥 Naya variable global kiya
+    global current_boss_img
     global win_snd_played, loose_snd_played
+    global blackhole_alert_active
     win_snd_played = False
     loose_snd_played = False
+    blackhole_alert_active = (current_selected_env == 3)
     global galaxy_bg_y
     galaxy_bg_y = 0.0
     global revives_done_this_level
@@ -315,6 +328,7 @@ def reset_level_logic(level):
     current_level = level
     kill_count = 0
     player_health = unlocked_hp
+    player_rect.center = (WIDTH // 2, HEIGHT - 60)
     fighters, elites, heavies, bullets, enemy_bullets, achievements, particles = [], [], [], [], [], [], []
     level_coins = 0
 
@@ -1049,51 +1063,120 @@ while running:
     # ==========================
     elif state == 3:
 
+        mx, my = pygame.mouse.get_pos()
+        keys = pygame.key.get_pressed()
+        mouse_pressed = pygame.mouse.get_pressed()[0]
+        pause_btn_rect = pygame.Rect(WIDTH - 55, 15, 40, 40)
+        is_h_pause = pause_btn_rect.collidepoint(mx, my)
+
+        # ----------------------------------------------------
+        # ⚠ BLACKHOLE STARTING WARNING POPUP ⚠
+        # ----------------------------------------------------
+        if blackhole_alert_active:
+            screen.blit(blackhole_bg, (0, 0))
+
+            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 210))
+            screen.blit(overlay, (0, 0))
+
+            alert_box = pygame.Rect(100, 90, 600, 420)
+            draw_panel(screen, alert_box, alpha=245, bg_color=(25, 12, 30), border_color=(255, 60, 120), border_width=3, border_radius=22)
+
+            draw_text("⚠ GRAVITATIONAL HAZARD ⚠", FONT_TITLE, (255, 60, 80), 400, 140)
+            draw_text("BLACK HOLE EVENT HORIZON DETECTED", FONT_UI, CYAN, 400, 190)
+
+            warnings = [
+                "• Extreme Gravity: All ships & asteroids are pulled toward the singularity center!",
+                "• Relativistic Time Dilation: Ship and combat navigation speeds are slowed down.",
+                "• Singularity Hazard: Getting sucked into the center will shrink & destroy your ship!",
+                "• Resistance: Use WASD / Arrows with quick reflexes to counteract the pull!"
+            ]
+
+            for idx, w_txt in enumerate(warnings):
+                col = (255, 220, 100) if idx == 2 else WHITE
+                draw_text(w_txt, FONT_SMALL, col, 400, 240 + idx * 34)
+
+            btn_engage = pygame.Rect(260, 415, 280, 55)
+            is_h_eng = btn_engage.collidepoint(mx, my)
+            draw_button(screen, "ENGAGE THRUSTERS", FONT_UI, WHITE, btn_engage, (190, 30, 90), is_h_eng, outline_color=CYAN)
+
+            if m_c and is_h_eng:
+                tap_snd.play()
+                blackhole_alert_active = False
+
+            pygame.display.flip()
+            clock.tick(60)
+            continue
+
+        # ----------------------------------------------------
+        # RELATIVISTIC ENVIRONMENT MULTIPLIER & SETTINGS
+        # ----------------------------------------------------
+        is_blackhole = (current_selected_env == 3)
+        env_speed_mult = 0.68 if is_blackhole else 1.0
+        eff_player_speed = max(3.0, unlocked_speed * env_speed_mult)
+
         # --- SMART CONTROLS LOGIC ---
         if fire_cooldown > 0:
             fire_cooldown -= 1
 
         is_firing = False
-        keys = pygame.key.get_pressed()
-        mouse_pressed = pygame.mouse.get_pressed()[0]
-        mx, my = pygame.mouse.get_pos()
-
-        pause_btn_rect = pygame.Rect(WIDTH - 55, 15, 40, 40)
-        is_h_pause = pause_btn_rect.collidepoint(mx, my)
 
         if control_type == 'PC':
             # Horizontal + Vertical Movement for dodging
             if (keys[pygame.K_a] or keys[pygame.K_LEFT]) and player_rect.left > 0:
-                player_rect.x -= unlocked_speed
+                player_rect.x -= eff_player_speed
             if (keys[pygame.K_d] or keys[pygame.K_RIGHT]) and player_rect.right < WIDTH:
-                player_rect.x += unlocked_speed
-            if (keys[pygame.K_w] or keys[pygame.K_UP]) and player_rect.top > 100:
-                player_rect.y -= unlocked_speed
+                player_rect.x += eff_player_speed
+            if (keys[pygame.K_w] or keys[pygame.K_UP]) and player_rect.top > 80:
+                player_rect.y -= eff_player_speed
             if (keys[pygame.K_s] or keys[pygame.K_DOWN]) and player_rect.bottom < HEIGHT - 10:
-                player_rect.y += unlocked_speed
+                player_rect.y += eff_player_speed
 
             # Hold SPACE or Mouse Click to auto-fire
             if (keys[pygame.K_SPACE] or (mouse_pressed and not is_h_pause)) and fire_cooldown <= 0:
                 is_firing = True
-                fire_cooldown = 8 if current_level <= 15 else 6
+                fire_cooldown = 9 if is_blackhole else (8 if current_level <= 15 else 6)
 
         elif control_type == 'MOBILE':
             if mouse_pressed and not is_h_pause:
                 if player_rect.centerx < mx - 5 and player_rect.right < WIDTH:
-                    player_rect.x += unlocked_speed
+                    player_rect.x += eff_player_speed
                 elif player_rect.centerx > mx + 5 and player_rect.left > 0:
-                    player_rect.x -= unlocked_speed
+                    player_rect.x -= eff_player_speed
 
                 if player_rect.centery < my - 5 and player_rect.bottom < HEIGHT - 10:
-                    player_rect.y += unlocked_speed
-                elif player_rect.centery > my + 5 and player_rect.top > 100:
-                    player_rect.y -= unlocked_speed
+                    player_rect.y += eff_player_speed
+                elif player_rect.centery > my + 5 and player_rect.top > 80:
+                    player_rect.y -= eff_player_speed
 
                 if fire_cooldown <= 0:
                     is_firing = True
-                    fire_cooldown = 8 if current_level <= 15 else 6
+                    fire_cooldown = 9 if is_blackhole else (8 if current_level <= 15 else 6)
 
-        if is_firing:
+        # ----------------------------------------------------
+        # BLACKHOLE GRAVITATIONAL PULL ON PLAYER & SHRINK
+        # ----------------------------------------------------
+        BH_X, BH_Y = 400, 300
+        p_dx = BH_X - player_rect.centerx
+        p_dy = BH_Y - player_rect.centery
+        p_dist = math.hypot(p_dx, p_dy)
+
+        if is_blackhole and p_dist > 0:
+            pull_mag = max(1.2, min(5.4, 750.0 / (p_dist + 50.0)))
+            player_rect.x += int((p_dx / p_dist) * pull_mag)
+            player_rect.y += int((p_dy / p_dist) * pull_mag)
+
+            if p_dist < 26:
+                player_health = 0
+                for _ in range(80):
+                    ang = random.uniform(0, 2 * math.pi)
+                    spd = random.uniform(2, 8)
+                    particles.append([BH_X, BH_Y, math.cos(ang) * spd, math.sin(ang) * spd, random.randint(5, 14), random.choice([(180, 20, 255), (255, 50, 100), (0, 255, 255), (255, 255, 255)])])
+                boss_expl_snd.play()
+                state = 5
+
+        # Bullets Firing
+        if is_firing and player_health > 0:
             b_cnt = unlocked_bullets + (1 if skills['double']['active'] else 0)
             for i in range(b_cnt):
                 offset = (i - (b_cnt - 1) / 2.0) * 16
@@ -1105,23 +1188,49 @@ while running:
             tap_snd.play()
             state = 10
 
-        # Dynamic Scrolling Background based on selected environment
-        galaxy_bg_y += 0.05
-        if galaxy_bg_y >= bg_height:
-            galaxy_bg_y = 0
+        # Background Drawing
+        if not is_blackhole:
+            galaxy_bg_y += 0.05
+            if galaxy_bg_y >= bg_height:
+                galaxy_bg_y = 0
+            current_bg = galaxy_bg if current_selected_env == 1 else nebula_bg
+            screen.blit(current_bg, (0, int(galaxy_bg_y)))
+            screen.blit(current_bg, (0, int(galaxy_bg_y) - bg_height))
+        else:
+            screen.blit(blackhole_bg, (0, 0))
 
-        current_bg = galaxy_bg if current_selected_env == 1 else (nebula_bg if current_selected_env == 2 else blackhole_bg)
-        screen.blit(current_bg, (0, int(galaxy_bg_y)))
-        screen.blit(current_bg, (0, int(galaxy_bg_y) - bg_height))
-
-        # Stars Parallax Loop & Twinkle
+        # ----------------------------------------------------
+        # STARS: SUCKED TOWARD BLACKHOLE AND VANISH AT CENTER
+        # ----------------------------------------------------
         for s in stars:
-            current_brightness = max(30, s[3] - random.randint(0, 80))
-            pygame.draw.rect(screen, (current_brightness, current_brightness, current_brightness), (s[0], int(s[1]), 2, 2))
-            s[1] += s[2]
-            if s[1] > HEIGHT:
-                s[1] = 0
-                s[0] = random.randint(0, WIDTH)
+            if is_blackhole:
+                sdx = BH_X - s[0]
+                sdy = BH_Y - s[1]
+                sdist = math.hypot(sdx, sdy)
+
+                s_spd = max(0.8, min(2.5, s[2] * 0.25 + 0.6))
+
+                if sdist < 24:
+                    angle = random.uniform(0, 2 * math.pi)
+                    spawn_dist = random.uniform(380, 520)
+                    s[0] = BH_X + math.cos(angle) * spawn_dist
+                    s[1] = BH_Y + math.sin(angle) * spawn_dist
+                    s[2] = random.uniform(1.0, 3.0)
+                    s[3] = random.randint(100, 255)
+                else:
+                    s[0] += (sdx / sdist) * s_spd
+                    s[1] += (sdy / sdist) * s_spd
+
+                if sdist >= 26:
+                    current_brightness = max(30, s[3] - random.randint(0, 60))
+                    pygame.draw.rect(screen, (current_brightness, current_brightness, current_brightness), (int(s[0]), int(s[1]), 2, 2))
+            else:
+                current_brightness = max(30, s[3] - random.randint(0, 80))
+                pygame.draw.rect(screen, (current_brightness, current_brightness, current_brightness), (s[0], int(s[1]), 2, 2))
+                s[1] += s[2]
+                if s[1] > HEIGHT:
+                    s[1] = 0
+                    s[0] = random.randint(0, WIDTH)
 
         # Asteroids Update & Collision
         asteroid_group.update()
@@ -1133,7 +1242,6 @@ while running:
                     player_health -= 30
                     hit_snd.play()
                 ast.kill()
-                # Asteroid shatter particles
                 for _ in range(12):
                     particles.append([ast.rect.centerx, ast.rect.centery, random.uniform(-4, 4), random.uniform(-4, 4), random.randint(3, 7), (120, 120, 130)])
 
@@ -1141,7 +1249,7 @@ while running:
         max_asteroids_in_match = 12 if current_level <= 30 else 7
         if asteroids_spawned < max_asteroids_in_match:
             if current_tick - last_spawn_tick > next_spawn_time:
-                new_asteroid = Asteroid(asteroid_img)
+                new_asteroid = Asteroid(asteroid_img, env=current_selected_env)
                 asteroid_group.add(new_asteroid)
                 asteroids_spawned += 1
                 last_spawn_tick = current_tick
@@ -1162,39 +1270,33 @@ while running:
 
         # --- SPAWN EXECUTION ---
         if not boss_active and not boss_arriving and boss_defeated_timer == 0:
-            # 1. Fighter: Swift scout
             if len(fighters) < max_fighters and random.randint(1, spawn_chance) == 1:
                 nr = fighter_img.get_rect(center=(random.randint(50, WIDTH - 50), -50))
                 if check_enemy_spawn(nr, all_enemies_objs):
                     fighters.append({'rect': nr, 'hp': 1, 'max_hp': 1, 'start_x': nr.x, 'time': random.randint(0, 50), 'type': 'fighter', 'dive_speed': random.uniform(2.5, 4.0)})
 
-            # 2. Elite: Tactical weaving cruiser with dual shots
             if current_level >= 2 and len(elites) < max_elites and random.randint(1, int(spawn_chance * 1.4)) == 1:
                 nr = elite_img.get_rect(center=(random.randint(50, WIDTH - 50), -50))
                 if check_enemy_spawn(nr, all_enemies_objs):
                     elites.append({'rect': nr, 'hp': 3, 'max_hp': 3, 'start_x': nr.x, 'time': random.randint(0, 50), 'type': 'elite'})
 
-            # 3. Heavy: Armored tank dreadnought
             if current_level >= 3 and len(heavies) < max_heavies and random.randint(1, int(spawn_chance * 2.2)) == 1:
                 nr = heavy_img.get_rect(center=(random.randint(60, WIDTH - 60), -60))
                 if check_enemy_spawn(nr, all_enemies_objs):
                     heavies.append({'rect': nr, 'hp': 8, 'max_hp': 8, 'start_x': nr.x, 'time': 0, 'type': 'heavy'})
 
-        # --- ENEMY MOVEMENT, COMBAT & MECHANICS ---
+        # --- ENEMY MOVEMENT, COMBAT & BLACKHOLE GRAVITATIONAL PULL ---
         for e_list, val, e_type in [(fighters, 1, 'fighter'), (elites, 2, 'elite'), (heavies, 5, 'heavy')]:
             for e in e_list[:]:
                 e['time'] = e.get('time', 0) + 1
                 e['start_x'] = e.get('start_x', e['rect'].x)
 
-                # Custom Mechanics per Enemy Type
                 if e_type == 'fighter':
-                    # High speed dive with fast strafe
-                    e['rect'].y += int(e.get('dive_speed', 3.0) + eff_speed_lvl * 0.2)
-                    strafe = math.sin(e['time'] * 0.08) * 3.5
+                    e['rect'].y += int((e.get('dive_speed', 3.0) + eff_speed_lvl * 0.2) * env_speed_mult)
+                    strafe = math.sin(e['time'] * 0.08) * 3.5 * env_speed_mult
                     e['rect'].x += int(strafe)
                 elif e_type == 'elite':
-                    # Sine wave weaving with player tracking
-                    e['rect'].y += int(2.0 + eff_speed_lvl * 0.15)
+                    e['rect'].y += int((2.0 + eff_speed_lvl * 0.15) * env_speed_mult)
                     wave = math.sin(e['time'] * 0.05) * 6
                     e['rect'].x = int(e['start_x'] + wave)
                     if e['rect'].centerx < player_rect.centerx - 10:
@@ -1202,12 +1304,32 @@ while running:
                     elif e['rect'].centerx > player_rect.centerx + 10:
                         e['start_x'] -= 1
                 elif e_type == 'heavy':
-                    # Slow, armored steady descent
-                    e['rect'].y += int(1.4 + eff_speed_lvl * 0.1)
+                    e['rect'].y += int((1.4 + eff_speed_lvl * 0.1) * env_speed_mult)
                     if e['rect'].centerx < player_rect.centerx - 20:
                         e['rect'].x += 1
                     elif e['rect'].centerx > player_rect.centerx + 20:
                         e['rect'].x -= 1
+
+                # Blackhole Attraction on Enemies
+                if is_blackhole:
+                    edx = BH_X - e['rect'].centerx
+                    edy = BH_Y - e['rect'].centery
+                    edist = math.hypot(edx, edy)
+                    if edist > 0:
+                        e_pull = max(0.9, min(4.5, 600.0 / (edist + 70.0)))
+                        e['rect'].x += int((edx / edist) * e_pull)
+                        e['rect'].y += int((edy / edist) * e_pull)
+
+                    # Enemy sucked into singularity!
+                    if edist < 28:
+                        if e in e_list:
+                            e_list.remove(e)
+                        update_coins(1 if val == 1 else 2 if val == 2 else 5)
+                        kill_count += 1
+                        expl_snd.play()
+                        for _ in range(16):
+                            particles.append([BH_X, BH_Y, random.uniform(-4, 4), random.uniform(-4, 4), random.randint(3, 7), random.choice(BLAST_COLORS)])
+                        continue
 
                 # Separation logic to avoid clumping
                 for other in all_enemies_objs:
@@ -1225,11 +1347,9 @@ while running:
                     if e_type == 'fighter':
                         enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx - 3, e['rect'].bottom, 6, 14), 'damage': dmg, 'color': RED})
                     elif e_type == 'elite':
-                        # Twin plasma lasers
                         enemy_bullets.append({'rect': pygame.Rect(e['rect'].left + 4, e['rect'].bottom, 6, 14), 'damage': dmg, 'color': MAGENTA})
                         enemy_bullets.append({'rect': pygame.Rect(e['rect'].right - 10, e['rect'].bottom, 6, 14), 'damage': dmg, 'color': MAGENTA})
                     elif e_type == 'heavy':
-                        # Triple heavy blast
                         enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx - 5, e['rect'].bottom, 10, 16), 'damage': dmg + 5, 'color': ORANGE})
                         enemy_bullets.append({'rect': pygame.Rect(e['rect'].left + 5, e['rect'].bottom - 5, 8, 14), 'damage': dmg, 'color': YELLOW})
                         enemy_bullets.append({'rect': pygame.Rect(e['rect'].right - 13, e['rect'].bottom - 5, 8, 14), 'damage': dmg, 'color': YELLOW})
@@ -1241,7 +1361,6 @@ while running:
                     if not skills['immortal']['active'] and revive_protection_timer <= 0:
                         player_health -= (15 if e_type == 'fighter' else 25 if e_type == 'elite' else 40)
                         hit_snd.play()
-                    # Crash particles
                     for _ in range(15):
                         particles.append([e['rect'].centerx, e['rect'].centery, random.uniform(-4, 4), random.uniform(-4, 4), random.randint(3, 6), random.choice(BLAST_COLORS)])
                 elif e['rect'].top > HEIGHT:
@@ -1274,7 +1393,7 @@ while running:
                     boss_rect.y += 2
 
                 boss_eff_tier = min(((current_level - 1) // 5) + 1, 8)
-                b_spd = 2 + (boss_eff_tier // 2)
+                b_spd = max(1.5, (2 + (boss_eff_tier // 2)) * env_speed_mult)
 
                 if boss_rect.centerx < boss_target_x:
                     dist_x = boss_target_x - boss_rect.centerx
@@ -1295,11 +1414,11 @@ while running:
 
         # --- DRAWING & COLLISIONS ---
         # Enemy Bullets
+        eb_speed = int(6 * env_speed_mult)
         for eb in enemy_bullets[:]:
-            eb['rect'].y += 6
+            eb['rect'].y += max(4, eb_speed)
             b_col = eb.get('color', RED)
             pygame.draw.rect(screen, b_col, eb['rect'], border_radius=3)
-            # Glowing core
             pygame.draw.rect(screen, WHITE, eb['rect'].inflate(-2, -4), border_radius=2)
 
             if eb['rect'].colliderect(player_rect):
@@ -1313,8 +1432,9 @@ while running:
                     enemy_bullets.remove(eb)
 
         # Player Bullets
+        pb_speed = int(14 * env_speed_mult)
         for b in bullets[:]:
-            b['rect'].y -= 14
+            b['rect'].y -= max(8, pb_speed)
             hit = False
 
             if boss_active and boss_death_timer == 0:
@@ -1348,7 +1468,6 @@ while running:
                                     particles.append([e['rect'].centerx, e['rect'].centery, random.uniform(-5, 5), random.uniform(-5, 5), random.randint(3, 7), p_color])
                             else:
                                 hit_snd.play()
-                                # Small spark
                                 particles.append([b['rect'].centerx, b['rect'].top, random.uniform(-2, 2), random.uniform(-2, 2), 3, CYAN])
                             hit = True
                             break
@@ -1361,8 +1480,7 @@ while running:
             achievements.append({'rect': pygame.Rect(random.randint(50, WIDTH - 50), -50, 32, 32), 'type': t})
 
         for a in achievements[:]:
-            a['rect'].y += 3
-            # Glowing powerup orb
+            a['rect'].y += max(2, int(3 * env_speed_mult))
             p_color = skills[a['type']]['color']
             pygame.draw.circle(screen, p_color, a['rect'].center, 16)
             pygame.draw.circle(screen, WHITE, a['rect'].center, 8)
@@ -1378,24 +1496,53 @@ while running:
                 if a in achievements:
                     achievements.remove(a)
 
-        # Drawing Layer: Bullets with neon glow
+        # Drawing Bullets
         for b in bullets:
             pygame.draw.rect(screen, CYAN, b['rect'], border_radius=3)
             pygame.draw.rect(screen, WHITE, b['rect'].inflate(-2, -4), border_radius=2)
 
-        # Drawing Layer: Ships & HP Indicators for Elite/Heavy
+        # Drawing Ships (with Blackhole shrinkage if near center)
         for f in fighters:
-            screen.blit(fighter_img, f['rect'])
+            if is_blackhole:
+                f_dist = math.hypot(BH_X - f['rect'].centerx, BH_Y - f['rect'].centery)
+                if f_dist < 150:
+                    f_scale = max(0.2, f_dist / 150.0)
+                    scaled_f = pygame.transform.scale(fighter_img, (max(8, int(50 * f_scale)), max(8, int(50 * f_scale))))
+                    screen.blit(scaled_f, scaled_f.get_rect(center=f['rect'].center))
+                else:
+                    screen.blit(fighter_img, f['rect'])
+            else:
+                screen.blit(fighter_img, f['rect'])
 
         for e in elites:
-            screen.blit(elite_img, e['rect'])
+            if is_blackhole:
+                e_dist = math.hypot(BH_X - e['rect'].centerx, BH_Y - e['rect'].centery)
+                if e_dist < 150:
+                    e_scale = max(0.2, e_dist / 150.0)
+                    scaled_e = pygame.transform.scale(elite_img, (max(10, int(60 * e_scale)), max(10, int(60 * e_scale))))
+                    screen.blit(scaled_e, scaled_e.get_rect(center=e['rect'].center))
+                else:
+                    screen.blit(elite_img, e['rect'])
+            else:
+                screen.blit(elite_img, e['rect'])
+
             if e['hp'] < e['max_hp']:
                 hp_w = int((e['rect'].width - 8) * (e['hp'] / e['max_hp']))
                 pygame.draw.rect(screen, (40, 40, 40), (e['rect'].left + 4, e['rect'].top - 8, e['rect'].width - 8, 4), border_radius=2)
                 pygame.draw.rect(screen, MAGENTA, (e['rect'].left + 4, e['rect'].top - 8, hp_w, 4), border_radius=2)
 
         for h in heavies:
-            screen.blit(heavy_img, h['rect'])
+            if is_blackhole:
+                h_dist = math.hypot(BH_X - h['rect'].centerx, BH_Y - h['rect'].centery)
+                if h_dist < 150:
+                    h_scale = max(0.2, h_dist / 150.0)
+                    scaled_h = pygame.transform.scale(heavy_img, (max(12, int(80 * h_scale)), max(12, int(80 * h_scale))))
+                    screen.blit(scaled_h, scaled_h.get_rect(center=h['rect'].center))
+                else:
+                    screen.blit(heavy_img, h['rect'])
+            else:
+                screen.blit(heavy_img, h['rect'])
+
             if h['hp'] < h['max_hp']:
                 hp_w = int((h['rect'].width - 10) * (h['hp'] / h['max_hp']))
                 pygame.draw.rect(screen, (40, 40, 40), (h['rect'].left + 5, h['rect'].top - 10, h['rect'].width - 10, 5), border_radius=2)
@@ -1425,8 +1572,16 @@ while running:
         if revive_protection_timer > 0:
             revive_protection_timer -= 1
 
-        # Draw Player
-        screen.blit(player_img, player_rect)
+        # Draw Player (with spaghettification shrink in Blackhole)
+        if is_blackhole and p_dist < 160:
+            scale_ratio = max(0.15, min(1.0, p_dist / 160.0))
+            cur_w = max(12, int(70 * scale_ratio))
+            cur_h = max(12, int(70 * scale_ratio))
+            p_draw_surf = pygame.transform.scale(player_img, (cur_w, cur_h))
+            p_draw_rect = p_draw_surf.get_rect(center=player_rect.center)
+            screen.blit(p_draw_surf, p_draw_rect)
+        else:
+            screen.blit(player_img, player_rect)
 
         # ==========================
         # MODERN UI & HUD
