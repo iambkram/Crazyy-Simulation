@@ -29,6 +29,7 @@ pygame.display.set_caption("Crazyy Simulation")
 # Import only fonts and helper functions from assets (no heavy images yet)
 from assets import *
 from branding import CinematicBranding
+from menu_battle import MenuBattleSimulation
 
 # ==========================================
 # MINIMAL BOOTSTRAP ASSETS (tiny, needed before loading screen)
@@ -279,6 +280,22 @@ bullet_img = pygame.Surface((6, 15))
 bullet_img.fill(BLUE)
 
 del _load_results, _i, _bgm_paths, _tier
+
+# ==========================================
+# MAIN MENU AUTONOMOUS LIVE BATTLE BACKGROUND
+# ==========================================
+menu_battle_sim = MenuBattleSimulation({
+    'player_img': player_img,
+    'fighter_img': fighter_img,
+    'elite_img': elite_img,
+    'heavy_img': heavy_img,
+    'galaxy_bg': galaxy_bg,
+    'nebula_bg': nebula_bg,
+    'blackhole_bg': blackhole_bg,
+    'shoot_snd': shoot_snd,
+    'expl_snd': expl_snd,
+    'hit_snd': hit_snd
+})
 
 # --- Variables ---
 kill_count = 0
@@ -684,12 +701,9 @@ while running:
     # MAIN MENU (STATE 0)
     # ==========================
     elif state == 0:
-        # Background + animated starfield
-        screen.blit(menu_bg, (0, 0))
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 20, 165))
-        screen.blit(overlay, (0, 0))
-        draw_menu_starfield(screen)
+        # Live autonomous combat simulation in selected environment (freezes when navigating away)
+        menu_battle_sim.update(dt=dt, current_env=current_selected_env)
+        menu_battle_sim.draw(screen, current_env=current_selected_env)
 
         mx, my = pygame.mouse.get_pos()
 

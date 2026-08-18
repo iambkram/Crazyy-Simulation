@@ -20,7 +20,7 @@ class CinematicBranding:
       - Smooth cinematic crossfade into Main Menu (instant skip on click/key)
     """
     def __init__(self):
-        self.duration = 3400          # Total duration in milliseconds
+        self.duration = 5200          # Total duration in milliseconds (~5.2s)
         self.start_time = None
         self.finished = False
 
@@ -43,7 +43,7 @@ class CinematicBranding:
         for _ in range(160):
             ang = random.uniform(0, 2 * math.pi)
             dist = random.uniform(15, 520)
-            spd = random.uniform(2.5, 8.5)
+            spd = random.uniform(2.2, 7.5)
             col = random.choice([
                 NEON_CYAN,
                 NEON_PURPLE,
@@ -135,7 +135,7 @@ class CinematicBranding:
         for _ in range(count):
             ang = random.uniform(0, 2 * math.pi)
             spd = random.uniform(speed_range[0], speed_range[1])
-            life = random.randint(35, 65)
+            life = random.randint(45, 80)
             col = random.choice([
                 WHITE,
                 NEON_CYAN,
@@ -153,7 +153,7 @@ class CinematicBranding:
                 'max_life': life,
                 'col': col,
                 'size': random.uniform(2.5, 6.0),
-                'decay': random.uniform(0.92, 0.96)
+                'decay': random.uniform(0.93, 0.97)
             })
 
     def update_and_draw(self, screen, dt, now, tap_snd=None, hit_snd=None, expl_snd=None):
@@ -173,35 +173,35 @@ class CinematicBranding:
         # ==========================================
         # 1. SCREEN SHAKE & AUDIO SYNCHRONIZATION
         # ==========================================
-        self.shake_x *= 0.82
-        self.shake_y *= 0.82
+        self.shake_x *= 0.84
+        self.shake_y *= 0.84
         if abs(self.shake_x) < 0.2: self.shake_x = 0.0
         if abs(self.shake_y) < 0.2: self.shake_y = 0.0
 
-        # Audio Cue 1: Ignition (t = 150ms)
-        if elapsed >= 150 and not self.snd_ignition_played:
+        # Audio Cue 1: Ignition (t = 200ms)
+        if elapsed >= 200 and not self.snd_ignition_played:
             if tap_snd: tap_snd.play()
             self.snd_ignition_played = True
-            self._spawn_shockwave(self.cx, self.cy, max_radius=280, speed=8.0, color=NEON_PURPLE, width=2)
+            self._spawn_shockwave(self.cx, self.cy, max_radius=300, speed=7.0, color=NEON_PURPLE, width=2)
 
-        # Audio Cue 2: Slam Impact (t = 1050ms)
-        if elapsed >= 1050 and not self.snd_impact_played:
+        # Audio Cue 2: Slam Impact (t = 1600ms)
+        if elapsed >= 1600 and not self.snd_impact_played:
             if hit_snd: hit_snd.play()
             self.snd_impact_played = True
             # Trigger screen shake
-            self.shake_x = random.choice([-1, 1]) * random.uniform(6.0, 10.0)
-            self.shake_y = random.choice([-1, 1]) * random.uniform(5.0, 8.0)
+            self.shake_x = random.choice([-1, 1]) * random.uniform(7.0, 11.0)
+            self.shake_y = random.choice([-1, 1]) * random.uniform(6.0, 9.0)
             # Twin supernova shockwaves
-            self._spawn_shockwave(self.cx, self.cy, max_radius=420, speed=13.0, color=NEON_CYAN, width=4)
-            self._spawn_shockwave(self.cx, self.cy, max_radius=340, speed=9.5, color=NEON_PINK, width=2)
+            self._spawn_shockwave(self.cx, self.cy, max_radius=450, speed=11.0, color=NEON_CYAN, width=4)
+            self._spawn_shockwave(self.cx, self.cy, max_radius=360, speed=8.0, color=NEON_PINK, width=2)
             # Particle supernova
-            self._spawn_radial_burst(self.cx, self.cy, count=65, speed_range=(5.0, 17.0))
+            self._spawn_radial_burst(self.cx, self.cy, count=70, speed_range=(4.0, 16.0))
 
-        # Audio Cue 3: Specular Laser Sweep (t = 1850ms)
-        if elapsed >= 1850 and not self.snd_sweep_played:
+        # Audio Cue 3: Specular Laser Sweep (t = 2850ms)
+        if elapsed >= 2850 and not self.snd_sweep_played:
             if tap_snd: tap_snd.play()
             self.snd_sweep_played = True
-            self._spawn_shockwave(self.cx, self.text_y, max_radius=260, speed=10.0, color=NEON_GOLD, width=2)
+            self._spawn_shockwave(self.cx, self.text_y, max_radius=280, speed=9.0, color=NEON_GOLD, width=2)
 
         # Offset target for all rendering
         ox = int(self.shake_x)
@@ -211,19 +211,19 @@ class CinematicBranding:
         # 2. HYPERSPACE RADIAL WARP STARFIELD
         # ==========================================
         # Dynamic warp speed multiplier (surges at start and during climax)
-        if elapsed < 800:
-            warp_mult = 1.0 + (elapsed / 800.0) * 2.5
-        elif elapsed < 2600:
-            warp_mult = 1.2 + 0.3 * math.sin(t_sec * 4.0)
+        if elapsed < 1200:
+            warp_mult = 1.0 + (elapsed / 1200.0) * 2.5
+        elif elapsed < 4200:
+            warp_mult = 1.2 + 0.3 * math.sin(t_sec * 3.5)
         else:
-            warp_mult = 1.5 + ((elapsed - 2600) / 800.0) * 4.5
+            warp_mult = 1.5 + ((elapsed - 4200) / 1000.0) * 4.5
 
         for s in self.warp_stars:
             s['dist'] += s['spd'] * warp_mult * dt
             if s['dist'] > 540:
                 s['dist'] = random.uniform(10, 35)
                 s['ang'] = random.uniform(0, 2 * math.pi)
-                s['spd'] = random.uniform(2.5, 8.5)
+                s['spd'] = random.uniform(2.2, 7.5)
 
             # Calculate streak coordinates radiating from (cx, cy)
             x1 = self.cx + ox + math.cos(s['ang']) * s['dist']
@@ -273,7 +273,7 @@ class CinematicBranding:
         # ==========================================
         # 4. SINGULARITY CORE & INWARD SPARK GATHERING
         # ==========================================
-        if elapsed < 1050:
+        if elapsed < 1600:
             # Spawn inward flowing particles
             if random.random() < 0.65:
                 p_ang = random.uniform(0, 2 * math.pi)
@@ -291,7 +291,7 @@ class CinematicBranding:
                 })
 
             # Pulsing singularity core sphere
-            sing_r = int(12 + 8 * math.sin(t_sec * 12.0))
+            sing_r = int(12 + 8 * math.sin(t_sec * 10.0))
             sing_surf = pygame.Surface((sing_r * 4, sing_r * 4), pygame.SRCALPHA)
             pygame.draw.circle(sing_surf, (*NEON_CYAN, 80), (sing_r * 2, sing_r * 2), sing_r * 2)
             pygame.draw.circle(sing_surf, (*NEON_PURPLE, 140), (sing_r * 2, sing_r * 2), sing_r + 4)
@@ -344,11 +344,11 @@ class CinematicBranding:
         # ==========================================
         # 7. THE "IAMBKRAM" APEX CYBER EMBLEM
         # ==========================================
-        if elapsed >= 400:
+        if elapsed >= 600:
             # Scale calculation with elastic drop-in
-            if elapsed < 1050:
+            if elapsed < 1600:
                 # Elastic ease-out descending: 2.5 -> 1.0
-                e_t = (elapsed - 400) / 650.0
+                e_t = (elapsed - 600) / 1000.0
                 emblem_scale = 1.0 + 1.5 * ((1.0 - e_t) ** 2.2)
                 emblem_alpha = min(255, int(e_t * 255))
             else:
@@ -370,7 +370,6 @@ class CinematicBranding:
             for arc_i in range(4):
                 start_ang = rot_outer + arc_i * (math.pi / 2) + 0.15
                 end_ang = start_ang + (math.pi / 2) - 0.30
-                # Draw arc as polyline points
                 arc_pts = []
                 for step in range(12):
                     theta = start_ang + (step / 11.0) * (end_ang - start_ang)
@@ -431,7 +430,6 @@ class CinematicBranding:
             pygame.draw.polygon(screen, NEON_CYAN, hex_pts, width=2)
 
             # --- C. APEX DELTA STARSHIP WINGS ---
-            # Sleek intersecting vector wings forming a stylized futuristic 'A' crest
             w_scale = emblem_scale
             wing_l = [
                 (emblem_cx - 24 * w_scale, emblem_cy + 22 * w_scale),
@@ -443,12 +441,10 @@ class CinematicBranding:
                 (emblem_cx,                emblem_cy - 28 * w_scale),
                 (emblem_cx + 6 * w_scale,  emblem_cy - 4 * w_scale)
             ]
-            # Translucent wing fill
             w_fill = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
             pygame.draw.polygon(w_fill, (*NEON_BLUE, int(emblem_alpha * 0.8)), wing_l)
             pygame.draw.polygon(w_fill, (*NEON_BLUE, int(emblem_alpha * 0.8)), wing_r)
             screen.blit(w_fill, (0, 0))
-            # Wing contours
             pygame.draw.polygon(screen, WHITE, wing_l, width=1)
             pygame.draw.polygon(screen, WHITE, wing_r, width=1)
 
@@ -461,22 +457,20 @@ class CinematicBranding:
                 (emblem_cx - core_r * 0.9, emblem_cy)
             ]
             core_surf = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            # Radiant diamond core
             pygame.draw.polygon(core_surf, (255, 255, 255, emblem_alpha), core_pts)
-            # Outer 4-point star aura
             pygame.draw.polygon(core_surf, (*NEON_GOLD, int(emblem_alpha * 0.7)), core_pts, width=2)
             screen.blit(core_surf, (0, 0))
 
         # ==========================================
         # 8. MULTI-LAYER NEON "IAMBKRAM" TYPOGRAPHY
         # ==========================================
-        if elapsed >= 1150:
-            text_alpha_t = min(1.0, (elapsed - 1150) / 450.0)
+        if elapsed >= 1700:
+            text_alpha_t = min(1.0, (elapsed - 1700) / 600.0)
             text_alpha = int(text_alpha_t * 255)
 
-            # Specular flare X position (sweeps left -> right from t=1800 to t=2700)
-            if 1800 <= elapsed <= 2700:
-                sweep_progress = (elapsed - 1800) / 900.0
+            # Specular flare X position (sweeps left -> right from t=2800 to t=4200)
+            if 2800 <= elapsed <= 4200:
+                sweep_progress = (elapsed - 2800) / 1400.0
                 # Smooth cubic ease
                 sweep_x = 120 + (sweep_progress * sweep_progress * (3.0 - 2.0 * sweep_progress)) * 560
             else:
@@ -498,27 +492,22 @@ class CinematicBranding:
                 bloom_s = self.letter_glow_surfs[i].copy()
                 bloom_alpha = min(255, int(text_alpha * (0.45 + 0.55 * specular_boost)))
                 bloom_s.set_alpha(bloom_alpha)
-                # Blurred 4-way offset
                 for bx, by in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
                     screen.blit(bloom_s, bloom_s.get_rect(center=(lx + bx, ly + by)))
 
                 # --- Layer 2: Chromatic Aberration 3D Split ---
                 if text_alpha > 50:
-                    # Red-shift left (-2px)
                     chr_r = self.letter_chroma_r[i].copy()
                     chr_r.set_alpha(int(text_alpha * 0.35))
                     screen.blit(chr_r, chr_r.get_rect(center=(lx - 2, ly)))
-                    # Cyan-shift right (+2px)
                     chr_b = self.letter_chroma_b[i].copy()
                     chr_b.set_alpha(int(text_alpha * 0.35))
                     screen.blit(chr_b, chr_b.get_rect(center=(lx + 2, ly)))
 
                 # --- Layer 3: Solid Face with Specular Illumination ---
                 if specular_boost > 0.05:
-                    # Blazing specular white highlight
                     face_s = self.letter_surfs[i].copy()
                     face_s.set_alpha(255)
-                    # Specular scale pop
                     sc = 1.0 + 0.12 * specular_boost
                     if sc > 1.01:
                         face_s = pygame.transform.scale(
@@ -527,7 +516,6 @@ class CinematicBranding:
                         )
                     screen.blit(face_s, face_s.get_rect(center=(lx, ly - int(3 * specular_boost))))
                 else:
-                    # Standard high-contrast white face
                     face_s = self.letter_surfs[i].copy()
                     face_s.set_alpha(text_alpha)
                     screen.blit(face_s, face_s.get_rect(center=(lx, ly)))
@@ -535,7 +523,7 @@ class CinematicBranding:
             # ==========================================
             # 9. SPECULAR LASER LENS FLARE
             # ==========================================
-            if 1800 <= elapsed <= 2700 and sweep_x > 0:
+            if 2800 <= elapsed <= 4200 and sweep_x > 0:
                 fx = int(sweep_x) + ox
                 fy = self.text_y + oy
 
@@ -573,8 +561,8 @@ class CinematicBranding:
             # ==========================================
             # 10. SUBTITLE & GLOWING HUD FRAMING
             # ==========================================
-            if elapsed >= 1500:
-                sub_alpha_t = min(1.0, (elapsed - 1500) / 400.0)
+            if elapsed >= 2200:
+                sub_alpha_t = min(1.0, (elapsed - 2200) / 500.0)
                 sub_alpha = int(sub_alpha_t * 255)
 
                 # A. Laser Divider Lines flanking subtitle
@@ -591,8 +579,8 @@ class CinematicBranding:
             # ==========================================
             # 11. CYBERPUNK CORNER HUD BRACKETS & TELEMETRY
             # ==========================================
-            if elapsed >= 1600:
-                hud_alpha_t = min(1.0, (elapsed - 1600) / 400.0)
+            if elapsed >= 2400:
+                hud_alpha_t = min(1.0, (elapsed - 2400) / 500.0)
                 hud_alpha = int(hud_alpha_t * 160)
 
                 hud_surf = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
@@ -627,8 +615,8 @@ class CinematicBranding:
         # ==========================================
         # 12. CINEMATIC CLIMAX & SEAMLESS DISSOLVE
         # ==========================================
-        if elapsed >= 2800:
-            fade_progress = (elapsed - 2800) / 600.0
+        if elapsed >= 4400:
+            fade_progress = (elapsed - 4400) / 800.0
             flash_alpha = min(255, int(fade_progress * 240))
             
             # Subtle radial energy surge flash
