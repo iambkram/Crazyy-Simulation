@@ -26,6 +26,16 @@ except:
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN | pygame.SCALED)
 pygame.display.set_caption("Crazyy Simulation")
 
+def apply_display_mode(fullscreen):
+    """Safely apply Fullscreen or Windowed display mode with hardware scaling preserved."""
+    global screen, is_fullscreen
+    is_fullscreen = bool(fullscreen)
+    if is_fullscreen:
+        screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN | pygame.SCALED)
+    else:
+        screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
+    return screen
+
 # Import only fonts and helper functions from assets (no heavy images yet)
 from assets import *
 from branding import CinematicBranding
@@ -659,6 +669,8 @@ def check_enemy_spawn(new_rect, all_enemies):
     return True
 
 load_game()
+if not is_fullscreen:
+    apply_display_mode(False)
 
 # --- Main Loop ---
 clock = pygame.time.Clock()
@@ -736,11 +748,7 @@ while running:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_F11:
                 # Toggle fullscreen / windowed
-                is_fullscreen = not is_fullscreen
-                if is_fullscreen:
-                    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN | pygame.SCALED)
-                else:
-                    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
+                apply_display_mode(not is_fullscreen)
             elif event.key == pygame.K_ESCAPE:
                 key_escape = True
             elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
@@ -1167,15 +1175,13 @@ while running:
             elif is_h_full:
                 if not is_fullscreen:
                     tap_snd.play()
-                    is_fullscreen = True
-                    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+                    apply_display_mode(True)
                     click_cooldown = 12
                     m_c = False
             elif is_h_win:
                 if is_fullscreen:
                     tap_snd.play()
-                    is_fullscreen = False
-                    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+                    apply_display_mode(False)
                     click_cooldown = 12
                     m_c = False
             elif is_h_fps:
@@ -1215,7 +1221,7 @@ while running:
                     pass
                 click_cooldown = 12
                 m_c = False
-            elif is_h_back:
+            elif is_h_back or key_escape:
                 tap_snd.play()
                 if settings_from_pause:
                     state = 10
@@ -1225,6 +1231,7 @@ while running:
                 save_game()
                 click_cooldown = 12
                 m_c = False
+                key_escape = False
 
     # ==========================
     # PC CONTROLS INFO (STATE 11)
