@@ -391,6 +391,24 @@ STATE_MAIN_MENU   = 0
 STATE_ENV_SELECT  = 20
 STATE_LEVEL_SELECT = 1
 
+# Keyboard Focus & Navigation System
+focused_btn = 0          # Index of currently focused button on active screen
+key_enter = False        # True on the frame Enter/Return was pressed
+key_escape = False       # True on the frame Escape was pressed
+key_up = False           # True on the frame Up/W was pressed (menu nav)
+key_down = False         # True on the frame Down/S was pressed (menu nav)
+key_left = False         # True on the frame Left/A was pressed (menu nav)
+key_right = False        # True on the frame Right/A was pressed (menu nav)
+key_tab = False          # True on the frame Tab was pressed
+key_p = False            # True on the frame P was pressed (pause toggle)
+key_r = False            # True on the frame R was pressed (retry shortcut)
+
+# Display & Performance Settings
+is_fullscreen = True     # Game starts in fullscreen mode
+show_fps = False         # FPS counter overlay toggle
+visual_quality = 'high'  # 'low', 'medium', 'high'
+screen_shake_enabled = True  # Screen shake effects toggle
+
 # --- Start at branding animation (assets are already loaded) ---
 state = -2
 branding_anim = CinematicBranding()
@@ -415,7 +433,11 @@ def save_game():
         "env3_unlocked": env3_unlocked or (max_nebula_level > 30),
         "control_type": control_type,
         "music_vol": music_vol,
-        "sfx_vol": sfx_vol
+        "sfx_vol": sfx_vol,
+        "show_fps": show_fps,
+        "visual_quality": visual_quality,
+        "screen_shake": screen_shake_enabled,
+        "display_mode": "fullscreen" if is_fullscreen else "windowed"
     }
     try:
         with open(SAVE_FILE, "w") as f:
@@ -514,6 +536,7 @@ def load_game():
     global total_coins, unlocked_hp, hp_step, unlocked_speed, speed_step
     global unlocked_bullets, bullet_step, max_galaxy_level, max_nebula_level, max_blackhole_level, control_type
     global env1_unlocked, env2_unlocked, env3_unlocked
+    global show_fps, visual_quality, screen_shake_enabled, is_fullscreen
 
     # Safe Defaults for new players (Galaxy Lvl 1 only unlocked)
     max_galaxy_level = 1
@@ -540,6 +563,11 @@ def load_game():
                 control_type = data.get("control_type", 'PC')
                 music_vol = data.get("music_vol", 0.5)
                 sfx_vol = data.get("sfx_vol", 0.7)
+                show_fps = data.get("show_fps", False)
+                visual_quality = data.get("visual_quality", "high")
+                screen_shake_enabled = data.get("screen_shake", True)
+                is_fullscreen_str = data.get("display_mode", "fullscreen")
+                is_fullscreen = (is_fullscreen_str == "fullscreen")
                 
                 # Unlock criteria: 30 levels of preceding environment must be completed
                 env1_unlocked = True
@@ -679,6 +707,17 @@ while running:
     m_c = False
     m_u = False
 
+    # Reset single-frame keyboard flags
+    key_enter = False
+    key_escape = False
+    key_up = False
+    key_down = False
+    key_left = False
+    key_right = False
+    key_tab = False
+    key_p = False
+    key_r = False
+
     ui_pulse_t += 0.05   # Drives hover glow pulsation across all UI
 
     if click_cooldown > 0:
@@ -694,6 +733,46 @@ while running:
         if event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
                 m_u = True
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_F11:
+                # Toggle fullscreen / windowed
+                is_fullscreen = not is_fullscreen
+                if is_fullscreen:
+                    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN | pygame.SCALED)
+                else:
+                    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
+            elif event.key == pygame.K_ESCAPE:
+                key_escape = True
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                key_enter = True
+            elif event.key in (pygame.K_UP, pygame.K_w):
+                if state != 3:  # Don't consume in gameplay (handled by get_pressed)
+                    key_up = True
+            elif event.key in (pygame.K_DOWN, pygame.K_s):
+                if state != 3:
+                    key_down = True
+            elif event.key in (pygame.K_LEFT, pygame.K_a):
+                if state != 3:
+                    key_left = True
+            elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                if state != 3:
+                    key_right = True
+            elif event.key == pygame.K_TAB:
+                key_tab = True
+            elif event.key == pygame.K_f:
+                if state != 3:  # F key toggles FPS outside gameplay
+                    show_fps = not show_fps
+            elif event.key == pygame.K_m:
+                if state != 3:  # M key mutes/unmutes music
+                    if music_vol > 0:
+                        music_vol = 0.0
+                    else:
+                        music_vol = 0.5
+                    pygame.mixer.music.set_volume(music_vol)
+            elif event.key == pygame.K_p:
+                key_p = True
+            elif event.key == pygame.K_r:
+                key_r = True
 
     # ==========================================
     # 🔥 3. CINEMATIC NEON BRANDING (STATE -2) 🔥
@@ -750,12 +829,30 @@ while running:
             ("✕  QUIT",      NEON_PINK,      426, 0),
         ]
 
-        for txt, col, y, target in menu_btns:
+        # Keyboard navigation for menu
+        if key_down or key_tab:
+            focused_btn = (focused_btn + 1) % len(menu_btns)
+        if key_up:
+            focused_btn = (focused_btn - 1) % len(menu_btns)
+        if key_escape:
+            running = False
+
+        for idx, (txt, col, y, target) in enumerate(menu_btns):
             btn_rect = pygame.Rect(250, y, 300, 62)
             is_hover = btn_rect.collidepoint(mx, my)
-            draw_glowing_button(screen, txt, FONT_UI, WHITE, btn_rect, col, is_hover,
+            is_focused = (idx == focused_btn)
+            if is_hover:
+                focused_btn = idx  # Mouse overrides keyboard focus
+            draw_glowing_button(screen, txt, FONT_UI, WHITE, btn_rect, col, is_hover or is_focused,
                                 border_radius=16, accent=NEON_CYAN, pulse_t=ui_pulse_t)
-            if m_c and is_hover:
+            # Keyboard focus indicator
+            if is_focused and not is_hover:
+                focus_surf = pygame.Surface((btn_rect.width + 8, btn_rect.height + 8), pygame.SRCALPHA)
+                pygame.draw.rect(focus_surf, (*NEON_CYAN, 90), focus_surf.get_rect(), border_radius=18, width=2)
+                screen.blit(focus_surf, (btn_rect.x - 4, btn_rect.y - 4))
+
+            activated = (m_c and is_hover) or (key_enter and is_focused)
+            if activated:
                 if txt.endswith("QUIT"):
                     running = False
                 elif ("MISSIONS" in txt or "STORE" in txt) and control_type is None:
@@ -844,13 +941,16 @@ while running:
             is_selected = (current_selected_env == env_id)
             is_hover    = card.collidepoint(mx, my) and unlocked
 
+            if is_hover: focused_btn = idx
+            is_focused = (focused_btn == idx)
+
             # Card background
             bg_col = PANEL_MID if unlocked else PANEL_DARK
             draw_neon_panel(screen, card, accent=accent if unlocked else (70, 30, 40),
                             alpha=230, border_radius=16, border_width=2 if not is_selected else 3, bg=bg_col)
 
             # Pulsing selected border
-            if is_selected:
+            if is_selected or (is_focused and unlocked):
                 pulse_alpha = int(100 + 80 * math.sin(ui_pulse_t * 3))
                 pulse_surf = pygame.Surface((card.width + 12, card.height + 12), pygame.SRCALPHA)
                 pygame.draw.rect(pulse_surf, (*accent, pulse_alpha), pulse_surf.get_rect(), border_radius=20, width=2)
@@ -889,19 +989,25 @@ while running:
                 draw_text(str(env_id), FONT_UI, accent, swatch_rect.centerx, swatch_rect.centery)
 
             # Click logic
-            if m_c and is_hover:
+            if (m_c and is_hover) or (key_enter and is_focused and unlocked):
                 tap_snd.play()
                 current_selected_env = env_id
                 state = STATE_LEVEL_SELECT
                 click_cooldown = 12
                 m_c = False
 
+        if key_down: focused_btn = (focused_btn + 1) % 4
+        if key_up: focused_btn = (focused_btn - 1) % 4
+
         # Back button
         btn_back = pygame.Rect(260, 504, 280, 54)
         is_h_back = btn_back.collidepoint(mx, my)
-        draw_glowing_button(screen, "← BACK TO MENU", FONT_UI, WHITE, btn_back, NEON_PINK, is_h_back,
+        if is_h_back: focused_btn = 3
+        is_focused_back = (focused_btn == 3) or is_h_back
+
+        draw_glowing_button(screen, "← BACK TO MENU", FONT_UI, WHITE, btn_back, NEON_PINK, is_focused_back,
                             border_radius=16, accent=RED, pulse_t=ui_pulse_t)
-        if m_c and is_h_back:
+        if (m_c and is_h_back) or (key_enter and focused_btn == 3) or key_escape:
             tap_snd.play()
             state = 0
             click_cooldown = 12
@@ -928,8 +1034,8 @@ while running:
         mob_active = control_type == 'MOBILE'
         pc_active  = control_type == 'PC'
 
-        btn_mob = pygame.Rect(80,  110, 280, 130)
-        btn_pc  = pygame.Rect(440, 110, 280, 130)
+        btn_mob = pygame.Rect(80,  95, 280, 90)
+        btn_pc  = pygame.Rect(440, 95, 280, 90)
 
         is_h_mob = btn_mob.collidepoint(mx, my)
         is_h_pc  = btn_pc.collidepoint(mx, my)
@@ -953,16 +1059,12 @@ while running:
 
         draw_text("📱  MOBILE", FONT_UI, WHITE if mob_active else LIGHT_GRAY, btn_mob.centerx, btn_mob.centery - 14)
         draw_text("Touch Controls", FONT_TINY, mob_accent, btn_mob.centerx, btn_mob.centery + 14)
-        if mob_active:
-            draw_badge(screen, "ACTIVE", FONT_TINY, btn_mob.centerx, btn_mob.bottom - 22, bg_color=(20,60,40), text_color=NEON_GREEN, border_color=NEON_GREEN)
 
         draw_text("🖥  PC / DESKTOP", FONT_UI, WHITE if pc_active else LIGHT_GRAY, btn_pc.centerx, btn_pc.centery - 14)
         draw_text("WASD + Space", FONT_TINY, pc_accent, btn_pc.centerx, btn_pc.centery + 14)
-        if pc_active:
-            draw_badge(screen, "ACTIVE", FONT_TINY, btn_pc.centerx, btn_pc.bottom - 22, bg_color=(20,60,40), text_color=NEON_GREEN, border_color=NEON_GREEN)
 
         # --- Volume Sliders ---
-        slider_y_pos   = [315, 415]
+        slider_y_pos   = [260, 330]
         slider_labels  = ["🎵  MUSIC VOLUME", "🔊  SOUND EFFECTS"]
         slider_colors  = [NEON_CYAN, NEON_ORANGE]
         current_vols   = [music_vol, sfx_vol]
@@ -992,8 +1094,57 @@ while running:
                     for snd in [shoot_snd, game_won_snd, game_loose_snd, tap_snd, boss_expl_snd, expl_snd, hit_snd]:
                         snd.set_volume(sfx_vol)
 
+        # --- Display Mode ---
+        draw_text("DISPLAY MODE", FONT_SMALL, WHITE, 400, 375)
+        btn_full = pygame.Rect(190, 395, 200, 36)
+        btn_win = pygame.Rect(410, 395, 200, 36)
+        is_h_full = btn_full.collidepoint(mx, my)
+        is_h_win = btn_win.collidepoint(mx, my)
+
+        draw_neon_panel(screen, btn_full, accent=NEON_GREEN if is_fullscreen else MID_GRAY, alpha=230, border_radius=8, border_width=2 if is_fullscreen else 1, bg=PANEL_MID)
+        draw_neon_panel(screen, btn_win, accent=NEON_GREEN if not is_fullscreen else MID_GRAY, alpha=230, border_radius=8, border_width=2 if not is_fullscreen else 1, bg=PANEL_MID)
+        
+        draw_text("FULLSCREEN", FONT_TINY, WHITE if is_fullscreen else LIGHT_GRAY, btn_full.centerx, btn_full.centery)
+        draw_text("WINDOWED", FONT_TINY, WHITE if not is_fullscreen else LIGHT_GRAY, btn_win.centerx, btn_win.centery)
+
+        # --- Toggles ---
+        # FPS Toggle
+        btn_fps = pygame.Rect(190, 440, 200, 30)
+        is_h_fps = btn_fps.collidepoint(mx, my)
+        fps_color = NEON_GREEN if show_fps else MID_GRAY
+        pygame.draw.rect(screen, fps_color, (btn_fps.x, btn_fps.y + 6, 18, 18), width=0 if show_fps else 2, border_radius=4)
+        if show_fps:
+            draw_text("✔", FONT_TINY, WHITE, btn_fps.x + 9, btn_fps.y + 15)
+        draw_text("📊 SHOW FPS COUNTER", FONT_TINY, WHITE, btn_fps.x + 110, btn_fps.centery)
+        
+        # Screen Shake Toggle
+        btn_shake = pygame.Rect(410, 440, 200, 30)
+        is_h_shake = btn_shake.collidepoint(mx, my)
+        shake_color = NEON_GREEN if screen_shake_enabled else MID_GRAY
+        pygame.draw.rect(screen, shake_color, (btn_shake.x, btn_shake.y + 6, 18, 18), width=0 if screen_shake_enabled else 2, border_radius=4)
+        if screen_shake_enabled:
+            draw_text("✔", FONT_TINY, WHITE, btn_shake.x + 9, btn_shake.y + 15)
+        draw_text("💫 SCREEN SHAKE EFFECTS", FONT_TINY, WHITE, btn_shake.x + 110, btn_shake.centery)
+
+        # --- Visual Quality ---
+        draw_text("VISUAL QUALITY", FONT_SMALL, WHITE, 400, 480)
+        btn_q_low = pygame.Rect(150, 495, 150, 36)
+        btn_q_med = pygame.Rect(325, 495, 150, 36)
+        btn_q_high = pygame.Rect(500, 495, 150, 36)
+        is_h_q_low = btn_q_low.collidepoint(mx, my)
+        is_h_q_med = btn_q_med.collidepoint(mx, my)
+        is_h_q_high = btn_q_high.collidepoint(mx, my)
+
+        draw_neon_panel(screen, btn_q_low, accent=NEON_CYAN if visual_quality == 'low' else MID_GRAY, alpha=230, border_radius=8, border_width=2 if visual_quality == 'low' else 1, bg=PANEL_MID)
+        draw_neon_panel(screen, btn_q_med, accent=NEON_CYAN if visual_quality == 'medium' else MID_GRAY, alpha=230, border_radius=8, border_width=2 if visual_quality == 'medium' else 1, bg=PANEL_MID)
+        draw_neon_panel(screen, btn_q_high, accent=NEON_CYAN if visual_quality == 'high' else MID_GRAY, alpha=230, border_radius=8, border_width=2 if visual_quality == 'high' else 1, bg=PANEL_MID)
+
+        draw_text("LOW", FONT_TINY, WHITE if visual_quality == 'low' else LIGHT_GRAY, btn_q_low.centerx, btn_q_low.centery)
+        draw_text("MEDIUM", FONT_TINY, WHITE if visual_quality == 'medium' else LIGHT_GRAY, btn_q_med.centerx, btn_q_med.centery)
+        draw_text("HIGH", FONT_TINY, WHITE if visual_quality == 'high' else LIGHT_GRAY, btn_q_high.centerx, btn_q_high.centery)
+
         # Save & Back
-        btn_back = pygame.Rect(265, 510, 270, 56)
+        btn_back = pygame.Rect(265, 540, 270, 46)
         is_h_back = btn_back.collidepoint(mx, my)
         draw_glowing_button(screen, "SAVE & BACK", FONT_UI, WHITE, btn_back, NEON_PINK, is_h_back,
                             border_radius=16, accent=RED, pulse_t=ui_pulse_t)
@@ -1011,6 +1162,57 @@ while running:
                 control_type = 'PC'
                 state = 11
                 save_game()
+                click_cooldown = 12
+                m_c = False
+            elif is_h_full:
+                if not is_fullscreen:
+                    tap_snd.play()
+                    is_fullscreen = True
+                    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+                    click_cooldown = 12
+                    m_c = False
+            elif is_h_win:
+                if is_fullscreen:
+                    tap_snd.play()
+                    is_fullscreen = False
+                    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+                    click_cooldown = 12
+                    m_c = False
+            elif is_h_fps:
+                tap_snd.play()
+                show_fps = not show_fps
+                click_cooldown = 12
+                m_c = False
+            elif is_h_shake:
+                tap_snd.play()
+                screen_shake_enabled = not screen_shake_enabled
+                click_cooldown = 12
+                m_c = False
+            elif is_h_q_low:
+                tap_snd.play()
+                visual_quality = 'low'
+                try:
+                    vfx_engine.set_quality(visual_quality)
+                except NameError:
+                    pass
+                click_cooldown = 12
+                m_c = False
+            elif is_h_q_med:
+                tap_snd.play()
+                visual_quality = 'medium'
+                try:
+                    vfx_engine.set_quality(visual_quality)
+                except NameError:
+                    pass
+                click_cooldown = 12
+                m_c = False
+            elif is_h_q_high:
+                tap_snd.play()
+                visual_quality = 'high'
+                try:
+                    vfx_engine.set_quality(visual_quality)
+                except NameError:
+                    pass
                 click_cooldown = 12
                 m_c = False
             elif is_h_back:
@@ -1159,6 +1361,11 @@ while running:
             if not m_down:
                 is_dragging_missions = False
 
+        if key_up:
+            level_scroll_y += 50
+        if key_down:
+            level_scroll_y -= 50
+
         level_scroll_y = max(-850, min(0, level_scroll_y))
         screen.set_clip(box_rect.inflate(-8, -8))
 
@@ -1253,7 +1460,7 @@ while running:
         draw_glowing_button(screen, "← BACK", FONT_UI, WHITE, btn_back, NEON_PINK, is_h_b,
                             border_radius=16, accent=RED, pulse_t=ui_pulse_t)
 
-        if m_c and is_h_b:
+        if (m_c and is_h_b) or key_escape:
             tap_snd.play()
             state = STATE_ENV_SELECT
             click_cooldown = 12
@@ -1366,13 +1573,14 @@ while running:
             if cost != "MAX":
                 draw_glowing_button(screen, "🛒  BUY", FONT_UI, WHITE, btn_buy, NEON_GREEN if can_afford else MID_GRAY, is_h_buy, pulse_t=ui_pulse_t)
 
-            if m_c:
-                if is_h_bk:
+            if m_c or key_escape or key_enter:
+                if is_h_bk or key_escape:
                     tap_snd.play()
                     store_selection = None
                     click_cooldown = 12
                     m_c = False
-                elif is_h_buy and cost != "MAX":
+                    key_escape = False
+                elif (is_h_buy or key_enter) and cost != "MAX":
                     if total_coins >= cost:
                         state = 7
                     else:
@@ -1380,13 +1588,14 @@ while running:
                         state = 8
                     click_cooldown = 12
                     m_c = False
+                    key_enter = False
 
         if not store_selection:
             btn_b_m = pygame.Rect(255, 430, 290, 56)
             is_h_bm = btn_b_m.collidepoint(mx, my)
             draw_glowing_button(screen, "← BACK TO MENU", FONT_UI, WHITE, btn_b_m, NEON_PINK, is_h_bm,
                                 border_radius=16, accent=RED, pulse_t=ui_pulse_t)
-            if m_c and is_h_bm:
+            if (m_c and is_h_bm) or key_escape:
                 tap_snd.play()
                 state = 0
                 click_cooldown = 12
@@ -1415,13 +1624,13 @@ while running:
         draw_glowing_button(screen, "CANCEL", FONT_UI, WHITE, b_n, NEON_PINK, is_h_n, pulse_t=ui_pulse_t)
         draw_glowing_button(screen, "✔  CONFIRM", FONT_UI, WHITE, b_y, NEON_GREEN, is_h_y, pulse_t=ui_pulse_t)
 
-        if m_c:
-            if is_h_n:
+        if m_c or key_escape or key_enter:
+            if is_h_n or key_escape:
                 tap_snd.play()
                 state = 6
                 click_cooldown = 12
                 m_c = False
-            if is_h_y:
+            if is_h_y or key_enter:
                 update_coins(-cost)
                 if store_selection == 'hp':
                     unlocked_hp += 10
@@ -1461,8 +1670,8 @@ while running:
         draw_glowing_button(screen, "← STORE", FONT_UI, WHITE, b_b, NEON_PINK, is_h_b, pulse_t=ui_pulse_t)
         draw_glowing_button(screen, "🚀 MISSIONS", FONT_UI, WHITE, b_t, NEON_GREEN, is_h_t, pulse_t=ui_pulse_t)
 
-        if m_c:
-            if is_h_b:
+        if m_c or key_escape or key_enter:
+            if is_h_b or key_escape or key_enter:
                 tap_snd.play()
                 state = 6
                 click_cooldown = 12
@@ -1545,18 +1754,20 @@ while running:
         draw_glowing_button(screen, "← BACK", FONT_UI, WHITE, b_a, NEON_PINK, is_h_a,
                             border_radius=16, accent=RED, pulse_t=ui_pulse_t)
 
-        if m_c:
-            if is_h_r:
+        if m_c or key_enter or key_escape:
+            if is_h_r or key_enter:
                 tap_snd.play()
                 reset_level_logic(selected_level)
                 state = 3
                 click_cooldown = 12
                 m_c = False
-            elif is_h_a:
+                key_enter = False
+            elif is_h_a or key_escape:
                 tap_snd.play()
                 state = 1
                 click_cooldown = 12
                 m_c = False
+                key_escape = False
 
 
     # ==========================
@@ -1702,11 +1913,13 @@ while running:
             shoot_snd.play()
 
         # Pause button click
-        if m_c and is_h_pause:
+        if (m_c and is_h_pause) or key_p or key_escape:
             tap_snd.play()
             click_cooldown = 12
             m_c = False
             state = 10
+            key_p = False
+            key_escape = False
 
         # Background Drawing
         if not is_blackhole:
@@ -2274,35 +2487,53 @@ while running:
         is_h_s = btn_settings.collidepoint(mx, my)
         is_h_m = btn_menu.collidepoint(mx, my)
 
+        if is_h_p: focused_btn = 0
+        if is_h_r: focused_btn = 1
+        if is_h_s: focused_btn = 2
+        if is_h_m: focused_btn = 3
+
+        if key_down: focused_btn = (focused_btn + 1) % 4
+        if key_up:   focused_btn = (focused_btn - 1) % 4
+
+        is_h_p = is_h_p or focused_btn == 0
+        is_h_r = is_h_r or focused_btn == 1
+        is_h_s = is_h_s or focused_btn == 2
+        is_h_m = is_h_m or focused_btn == 3
+
         draw_button(screen, "RESUME MISSION", FONT_UI, WHITE, btn_resume, GREEN, is_h_p)
         draw_button(screen, "RESTART LEVEL", FONT_UI, WHITE, btn_restart, ORANGE, is_h_r)
         draw_button(screen, "SETTINGS", FONT_UI, WHITE, btn_settings, BLUE, is_h_s)
         draw_button(screen, "ABORT TO MENU", FONT_UI, WHITE, btn_menu, RED, is_h_m)
 
-        if m_c:
-            if is_h_p:
+        if m_c or key_enter or key_escape or key_p:
+            if is_h_p or (key_escape or key_p):
                 tap_snd.play()
                 state = 3
                 click_cooldown = 12
                 m_c = False
-            elif is_h_s:
+                key_escape = False
+                key_p = False
+            elif is_h_s and (m_c or key_enter):
                 tap_snd.play()
                 settings_from_pause = True
                 state = 9
                 click_cooldown = 12
                 m_c = False
-            elif is_h_m:
+                key_enter = False
+            elif is_h_m and (m_c or key_enter):
                 tap_snd.play()
                 warning_target = "MENU"
                 state = 15
                 click_cooldown = 12
                 m_c = False
-            elif is_h_r:
+                key_enter = False
+            elif is_h_r and (m_c or key_enter):
                 tap_snd.play()
                 warning_target = "RESTART"
                 state = 15
                 click_cooldown = 12
                 m_c = False
+                key_enter = False
 
     # ==========================
     # WARNING SCREEN (STATE 15)
@@ -2329,18 +2560,20 @@ while running:
         draw_button(screen, "RESUME", FONT_UI, WHITE, btn_w_back, GREEN, is_h_back)
         draw_button(screen, "CONFIRM LEAVE", FONT_UI, WHITE, btn_ok, RED, is_h_ok)
 
-        if m_c:
-            if is_h_back:
+        if m_c or key_escape or key_enter:
+            if is_h_back or key_escape:
                 tap_snd.play()
                 state = 10
                 click_cooldown = 12
                 m_c = False
-            elif is_h_ok:
+                key_escape = False
+            elif is_h_ok or key_enter:
                 tap_snd.play()
                 total_coins -= level_coins
                 level_coins = 0
                 click_cooldown = 12
                 m_c = False
+                key_enter = False
 
                 if warning_target == "MENU":
                     save_game()
@@ -2442,15 +2675,17 @@ while running:
             draw_glowing_button(screen, "← MAIN MENU", FONT_UI, WHITE, b_m, NEON_BLUE, is_h_m, pulse_t=ui_pulse_t)
             draw_glowing_button(screen, "NEXT LEVEL ➔", FONT_UI, WHITE, b_n, NEON_GREEN, is_h_n, pulse_t=ui_pulse_t)
 
-            if m_c:
-                if is_h_m:
+            if m_c or key_enter or key_escape or key_left:
+                if is_h_m or key_escape or key_left:
                     tap_snd.play()
                     level_coins = 0
                     save_game()
                     state = 0
                     click_cooldown = 12
                     m_c = False
-                elif is_h_n:
+                    key_escape = False
+                    key_left = False
+                elif is_h_n or key_enter:
                     if current_level < 40:
                         level_coins = 0
                         selected_level = current_level + 1
@@ -2459,6 +2694,7 @@ while running:
                         state = 3
                         click_cooldown = 12
                         m_c = False
+                        key_enter = False
 
         # Regular Game Over Screen (State 5)
         elif state == 5:
@@ -2482,30 +2718,56 @@ while running:
             is_h_n   = b_n.collidepoint(mx, my)
             is_h_m   = b_m.collidepoint(mx, my)
 
+            if is_h_rev: focused_btn = 0
+            if is_h_n: focused_btn = 1
+            if is_h_m: focused_btn = 2
+            
+            if key_down: focused_btn = (focused_btn + 1) % 3
+            if key_up: focused_btn = (focused_btn - 1) % 3
+            
+            is_h_rev = is_h_rev or focused_btn == 0
+            is_h_n = is_h_n or focused_btn == 1
+            is_h_m = is_h_m or focused_btn == 2
+
             draw_glowing_button(screen, "✨  REVIVE STARSHIP", FONT_UI, WHITE, rev_b, NEON_GOLD, is_h_rev, pulse_t=ui_pulse_t)
             draw_glowing_button(screen, "↻  RETRY MISSION", FONT_UI, WHITE, b_n, NEON_ORANGE, is_h_n, pulse_t=ui_pulse_t)
             draw_glowing_button(screen, "← MAIN MENU", FONT_UI, WHITE, b_m, NEON_BLUE, is_h_m, pulse_t=ui_pulse_t)
 
-            if m_c:
-                if is_h_rev:
+            if m_c or key_enter or key_escape or key_r:
+                if is_h_rev and (m_c or (key_enter and focused_btn == 0)):
                     tap_snd.play()
                     show_revive_confirm = True
                     click_cooldown = 12
                     m_c = False
-                elif is_h_n:
+                    key_enter = False
+                elif (is_h_n and (m_c or (key_enter and focused_btn == 1))) or key_r:
                     level_coins = 0
                     reset_level_logic(selected_level)
                     tap_snd.play()
                     state = 3
                     click_cooldown = 12
                     m_c = False
-                elif is_h_m:
+                    key_enter = False
+                    key_r = False
+                elif (is_h_m and (m_c or (key_enter and focused_btn == 2))) or key_escape:
                     tap_snd.play()
                     level_coins = 0
                     save_game()
                     state = 0
                     click_cooldown = 12
                     m_c = False
+                    key_enter = False
+                    key_escape = False
+
+    # FPS Counter Overlay
+    if show_fps:
+        fps_val = int(clock.get_fps())
+        fps_color = NEON_GREEN if fps_val >= 50 else NEON_GOLD if fps_val >= 30 else RED
+        fps_text = FONT_TINY.render(f"FPS: {fps_val}", True, fps_color)
+        fps_bg = pygame.Rect(WIDTH - 78, 4, 74, 22)
+        pygame.draw.rect(screen, (10, 12, 20, 200), fps_bg, border_radius=6)
+        pygame.draw.rect(screen, fps_color, fps_bg, width=1, border_radius=6)
+        screen.blit(fps_text, fps_text.get_rect(center=fps_bg.center))
 
     pygame.display.flip()
     clock.tick(60)

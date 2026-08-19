@@ -1,5 +1,3 @@
-import random
-
 # --- Display Settings ---
 WIDTH, HEIGHT = 800, 600
 
@@ -42,4 +40,16 @@ BLAST_COLORS = [
 # --- Game Costs & Settings ---
 hp_costs     = [10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
 speed_costs  = [100, 200, 400, 600]
-bullet_costs = [1000, 2000, 4000]
+bullet_costs = [1000, 2000, 4000]
+
+# Quality Presets
+QUALITY_LOW = 'low'
+QUALITY_MEDIUM = 'medium'
+QUALITY_HIGH = 'high'
+
+# Quality-scaled particle counts
+QUALITY_PARTICLES = {
+    'low': {'debris': 50, 'god_rays': 4, 'thruster_density': 0.4, 'stars': 60},
+    'medium': {'debris': 100, 'god_rays': 8, 'thruster_density': 0.7, 'stars': 120},
+    'high': {'debris': 150, 'god_rays': 12, 'thruster_density': 1.0, 'stars': 180}
+}

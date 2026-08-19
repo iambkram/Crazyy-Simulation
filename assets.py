@@ -1,6 +1,7 @@
 import pygame
 import math
 import os
+import random
 from settings import *
 
 # Fonts Setup
@@ -15,6 +16,22 @@ FONT_HUD         = pygame.font.SysFont("Impact", 34)
 FONT_SMALL       = pygame.font.SysFont("Arial Black", 16)
 FONT_HP          = pygame.font.SysFont("Arial Black", 14)
 FONT_TINY        = pygame.font.SysFont("Arial Black", 12)
+
+# Text Surface Cache (LRU) for performance
+_text_cache = {}
+_TEXT_CACHE_MAX = 256
+
+def get_cached_text(font, text, color):
+    """Return cached rendered text surface to avoid re-rendering every frame."""
+    key = (id(font), text, color)
+    if key not in _text_cache:
+        if len(_text_cache) >= _TEXT_CACHE_MAX:
+            # Remove oldest quarter of entries
+            keys_to_remove = list(_text_cache.keys())[:_TEXT_CACHE_MAX // 4]
+            for k in keys_to_remove:
+                del _text_cache[k]
+        _text_cache[key] = font.render(text, True, color)
+    return _text_cache[key]
 
 # Assets Folder Path
 ASSETS_DIR = "game_assets"
@@ -211,7 +228,6 @@ _menu_stars = [[__import__('random').randint(0, 800),
 
 def draw_menu_starfield(screen, width=800, height=600):
     """Draws and animates a gentle drifting starfield for menu screens."""
-    import random
     for s in _menu_stars:
         s[1] += s[2]
         if s[1] > height:

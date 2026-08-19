@@ -100,6 +100,11 @@ class CinematicBranding:
             self.font_brand.render(ch, True, (0, 220, 255)) for ch in self.letters
         ]
 
+        # Pre-allocated reusable scratch surfaces for performance
+        self._streak_surf = pygame.Surface((4, 40), pygame.SRCALPHA)
+        self._hex_glow_surf = pygame.Surface((200, 200), pygame.SRCALPHA)
+        self._dissolve_surf = pygame.Surface((800, 600), pygame.SRCALPHA)
+
     def reset(self):
         """Reset animation state for re-runs."""
         self.start_time = None
@@ -235,7 +240,8 @@ class CinematicBranding:
 
             alpha = min(255, int((s['dist'] / 180.0) * 255))
             if alpha > 10:
-                line_surf = pygame.Surface((abs(int(x2 - x1)) + 6, abs(int(y2 - y1)) + 6), pygame.SRCALPHA)
+                self._streak_surf.fill((0, 0, 0, 0))
+                line_surf = self._streak_surf
                 min_x = min(x1, x2)
                 min_y = min(y1, y2)
                 lx1 = x1 - min_x + 3
@@ -417,12 +423,14 @@ class CinematicBranding:
                 ))
 
             # Layer 1: Glow halo
-            glow_poly = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            self._hex_glow_surf.fill((0, 0, 0, 0))
+            glow_poly = self._hex_glow_surf
             pygame.draw.polygon(glow_poly, (*NEON_PURPLE, int(emblem_alpha * 0.25)), hex_pts, width=8)
             screen.blit(glow_poly, (0, 0))
 
             # Layer 2: Translucent Hex Fill
-            fill_poly = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            self._hex_glow_surf.fill((0, 0, 0, 0))
+            fill_poly = self._hex_glow_surf
             pygame.draw.polygon(fill_poly, (15, 20, 42, int(emblem_alpha * 0.75)), hex_pts)
             screen.blit(fill_poly, (0, 0))
 
@@ -620,6 +628,7 @@ class CinematicBranding:
             flash_alpha = min(255, int(fade_progress * 240))
             
             # Subtle radial energy surge flash
-            flash_surf = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            self._dissolve_surf.fill((0, 0, 0, 0))
+            flash_surf = self._dissolve_surf
             flash_surf.fill((0, 0, 15, flash_alpha))
             screen.blit(flash_surf, (0, 0))

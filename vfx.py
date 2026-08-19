@@ -15,6 +15,9 @@ class VisualEffectsEngine:
         # Thruster particle pools: [x, y, vx, vy, life, max_life, col, size]
         self.thruster_particles = []
         
+        self.visual_quality = 'high'
+        self._thruster_surf = pygame.Surface((12, 12), pygame.SRCALPHA)
+        
         # Boss Cataclysm state
         self.boss_shockwaves = []
         self.boss_debris = []
@@ -22,6 +25,10 @@ class VisualEffectsEngine:
         self.boss_lightning = []
         self.boss_flash_alpha = 0.0
         self.screen_shake = [0.0, 0.0]
+
+    def set_quality(self, quality):
+        """Set visual quality level: 'low', 'medium', or 'high'."""
+        self.visual_quality = quality
 
     def reset_boss_effects(self):
         """Reset boss explosion pools."""
@@ -37,6 +44,11 @@ class VisualEffectsEngine:
     # =========================================================================
     def emit_player_thruster(self, centerx, bottom_y):
         """Emit dual glowing cyan/blue engine exhaust plumes for the player ship."""
+        from settings import QUALITY_PARTICLES
+        density = QUALITY_PARTICLES.get(self.visual_quality, QUALITY_PARTICLES['high']).get('thruster_density', 1.0)
+        if random.random() > density:
+            return
+            
         for ox in [-12, 12]:
             # Flame core particle
             self.thruster_particles.append([
@@ -49,8 +61,12 @@ class VisualEffectsEngine:
                 random.uniform(2.5, 4.5)
             ])
 
-    def emit_enemy_thruster(self, centerx, top_y, enemy_type='fighter', width=40):
+    def emit_enemy_thruster(self, centerx, top_y, enemy_type='fighter', width=40): # width is unused
         """Emit upward engine exhaust plumes for enemy ships."""
+        from settings import QUALITY_PARTICLES
+        density = QUALITY_PARTICLES.get(self.visual_quality, QUALITY_PARTICLES['high']).get('thruster_density', 1.0)
+        if random.random() > density:
+            return
         if enemy_type == 'fighter':
             # Dual red/orange thrusters
             for ox in [-8, 8]:
@@ -119,14 +135,15 @@ class VisualEffectsEngine:
             alpha = int(240 * frac)
 
             # Draw glowing circular plume
-            p_surf = pygame.Surface((r * 2 + 2, r * 2 + 2), pygame.SRCALPHA)
+            self._thruster_surf.fill((0, 0, 0, 0))
+            p_surf = self._thruster_surf
             pygame.draw.circle(p_surf, (*p[6], alpha), (r + 1, r + 1), r)
             screen.blit(p_surf, (int(p[0]) - r, int(p[1]) - r))
 
     # =========================================================================
     # 2. LEGENDARY SUPERNOVA BOSS DESTRUCTION CATACLYSM
     # =========================================================================
-    def trigger_boss_detonation(self, boss_rect, current_boss_img):
+    def trigger_boss_detonation(self, boss_rect, current_boss_img): # current_boss_img is unused
         """Initialize the final cataclysmic explosion when boss death timer reaches peak."""
         # 1. Triple Expanding Chromatic Shockwave Rings
         self.boss_shockwaves.append({'r': 10.0, 'max_r': 520.0, 'spd': 16.0, 'col': NEON_CYAN, 'w': 6, 'alpha': 255.0})
@@ -136,8 +153,10 @@ class VisualEffectsEngine:
         # 2. Screen Flash
         self.boss_flash_alpha = 245.0
 
-        # 3. Molten Shrapnel & Hull Debris Fragments (150+ dynamic particles)
-        for _ in range(150):
+        # 3. Molten Shrapnel & Hull Debris Fragments
+        from settings import QUALITY_PARTICLES
+        debris_count = QUALITY_PARTICLES.get(self.visual_quality, QUALITY_PARTICLES['high'])['debris']
+        for _ in range(debris_count):
             ang = random.uniform(0, 2 * math.pi)
             spd = random.uniform(4.0, 20.0)
             life = random.randint(35, 75)
@@ -250,7 +269,8 @@ class VisualEffectsEngine:
 
             # Piercing God-Ray Laser Spikes radiating from Core
             ray_t = (110 - boss_death_timer) / 70.0
-            num_rays = 12
+            from settings import QUALITY_PARTICLES
+            num_rays = QUALITY_PARTICLES.get(self.visual_quality, QUALITY_PARTICLES['high']).get('god_rays', 12)
             for i in range(num_rays):
                 ray_ang = (i / float(num_rays)) * 2 * math.pi + (pygame.time.get_ticks() * 0.015)
                 ray_len = 160.0 + 80.0 * math.sin(ray_ang * 3 + pygame.time.get_ticks() * 0.02)

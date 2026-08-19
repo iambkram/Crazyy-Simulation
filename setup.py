@@ -317,10 +317,23 @@ btn_cancel_rect = pygame.Rect(36, SETUP_HEIGHT - 62, 130, 42)
 
 step_timer = 0
 
+# Cache disk usage (computed once per page transition, not every frame)
+cached_disk_free = None
+
+setup_key_enter = False
+setup_key_escape = False
+setup_key_space = False
+setup_key_tab = False
+setup_focused = 0  # Keyboard focus index for checkboxes/buttons
+
 while running:
     pulse_ticker += 0.05
     mx, my = pygame.mouse.get_pos()
     mouse_clicked = False
+    setup_key_enter = False
+    setup_key_escape = False
+    setup_key_space = False
+    setup_key_tab = False
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -328,6 +341,15 @@ while running:
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 mouse_clicked = True
+        elif event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                setup_key_enter = True
+            elif event.key == pygame.K_ESCAPE:
+                setup_key_escape = True
+            elif event.key == pygame.K_SPACE:
+                setup_key_space = True
+            elif event.key == pygame.K_TAB:
+                setup_key_tab = True
 
     # 1. Background
     draw_setup_background(screen, pulse_ticker)
@@ -342,8 +364,8 @@ while running:
         pygame.draw.rect(screen, NEON_CYAN, card_rect, width=1, border_radius=14)
 
         # Welcome Insignia & Text
-        draw_text = FONT_HEADER.render("Welcome to the Crazyy Simulation Setup", True, WHITE)
-        screen.blit(draw_text, (65, 140))
+        welcome_title = FONT_HEADER.render("Welcome to the Crazyy Simulation Setup", True, WHITE)
+        screen.blit(welcome_title, (65, 140))
         
         info_lines = [
             "This wizard will install Crazyy Simulation on your Windows computer.",
@@ -372,10 +394,10 @@ while running:
         draw_setup_btn(screen, btn_cancel_rect, "CANCEL", RED, (mx, my), pulse_ticker)
         draw_setup_btn(screen, btn_next_rect, "NEXT >", NEON_CYAN, (mx, my), pulse_ticker)
 
-        if mouse_clicked:
-            if btn_cancel_rect.collidepoint(mx, my):
+        if mouse_clicked or setup_key_enter or setup_key_escape:
+            if setup_key_escape or (mouse_clicked and btn_cancel_rect.collidepoint(mx, my)):
                 running = False
-            elif btn_next_rect.collidepoint(mx, my):
+            elif setup_key_enter or (mouse_clicked and btn_next_rect.collidepoint(mx, my)):
                 current_page = PAGE_PERMISSIONS
 
     elif current_page == PAGE_PERMISSIONS:
@@ -411,19 +433,25 @@ while running:
         draw_setup_btn(screen, btn_back_rect, "< BACK", MID_GRAY, (mx, my), pulse_ticker)
         draw_setup_btn(screen, btn_next_rect, "NEXT >", NEON_CYAN, (mx, my), pulse_ticker, disabled=not opt_grant_perms)
 
-        if mouse_clicked:
-            if chk1_rect.collidepoint(mx, my):
+        if mouse_clicked or setup_key_enter or setup_key_escape:
+            if mouse_clicked and chk1_rect.collidepoint(mx, my):
                 opt_grant_perms = not opt_grant_perms
-            elif chk2_rect.collidepoint(mx, my):
+            elif mouse_clicked and chk2_rect.collidepoint(mx, my):
                 opt_desktop_icon = not opt_desktop_icon
-            elif chk3_rect.collidepoint(mx, my):
+            elif mouse_clicked and chk3_rect.collidepoint(mx, my):
                 opt_start_menu = not opt_start_menu
-            elif btn_cancel_rect.collidepoint(mx, my):
+            elif setup_key_escape or (mouse_clicked and btn_cancel_rect.collidepoint(mx, my)):
                 running = False
-            elif btn_back_rect.collidepoint(mx, my):
+            elif mouse_clicked and btn_back_rect.collidepoint(mx, my):
                 current_page = PAGE_WELCOME
-            elif btn_next_rect.collidepoint(mx, my) and opt_grant_perms:
+            elif (setup_key_enter or (mouse_clicked and btn_next_rect.collidepoint(mx, my))) and opt_grant_perms:
                 current_page = PAGE_DIRECTORY
+                # Cache disk space on page transition
+                try:
+                    total_b, used_b, free_b = shutil.disk_usage(os.path.splitdrive(install_path)[0] or "C:")
+                    cached_disk_free = free_b / (1024**3)
+                except Exception:
+                    cached_disk_free = None
 
     elif current_page == PAGE_DIRECTORY:
         draw_setup_header(screen, "DESTINATION LOCATION", "Select the destination folder where game files will be installed")
@@ -440,12 +468,10 @@ while running:
         pygame.draw.rect(screen, NEON_CYAN, dir_box, width=1, border_radius=8)
         screen.blit(FONT_MONO.render(install_path, True, WHITE), (78, 195))
 
-        # Disk space calculation
-        try:
-            total_b, used_b, free_b = shutil.disk_usage(os.path.splitdrive(install_path)[0] or "C:")
-            free_gb = free_b / (1024**3)
-            free_text = f"Space available on drive: {free_gb:.2f} GB"
-        except Exception:
+        # Disk space calculation (uses cached value from page transition)
+        if cached_disk_free is not None:
+            free_text = f"Space available on drive: {cached_disk_free:.2f} GB"
+        else:
             free_text = "Space available: > 10.0 GB"
 
         screen.blit(FONT_BODY_B.render("Space required: ~42.0 MB", True, NEON_GOLD), (65, 255))
@@ -458,12 +484,12 @@ while running:
         draw_setup_btn(screen, btn_back_rect, "< BACK", MID_GRAY, (mx, my), pulse_ticker)
         draw_setup_btn(screen, btn_next_rect, "INSTALL NOW", NEON_GREEN, (mx, my), pulse_ticker)
 
-        if mouse_clicked:
-            if btn_cancel_rect.collidepoint(mx, my):
+        if mouse_clicked or setup_key_enter or setup_key_escape:
+            if setup_key_escape or (mouse_clicked and btn_cancel_rect.collidepoint(mx, my)):
                 running = False
-            elif btn_back_rect.collidepoint(mx, my):
+            elif mouse_clicked and btn_back_rect.collidepoint(mx, my):
                 current_page = PAGE_PERMISSIONS
-            elif btn_next_rect.collidepoint(mx, my):
+            elif setup_key_enter or (mouse_clicked and btn_next_rect.collidepoint(mx, my)):
                 current_page = PAGE_INSTALLING
                 install_step_index = 0
                 install_logs.clear()
@@ -546,12 +572,12 @@ while running:
         draw_setup_btn(screen, btn_cancel_rect, "CLOSE", RED, (mx, my), pulse_ticker)
         draw_setup_btn(screen, btn_next_rect, "FINISH", NEON_GREEN, (mx, my), pulse_ticker)
 
-        if mouse_clicked:
-            if chk_launch.collidepoint(mx, my):
+        if mouse_clicked or setup_key_enter or setup_key_escape:
+            if mouse_clicked and chk_launch.collidepoint(mx, my):
                 opt_launch_game = not opt_launch_game
-            elif btn_cancel_rect.collidepoint(mx, my):
+            elif setup_key_escape or (mouse_clicked and btn_cancel_rect.collidepoint(mx, my)):
                 running = False
-            elif btn_next_rect.collidepoint(mx, my):
+            elif setup_key_enter or (mouse_clicked and btn_next_rect.collidepoint(mx, my)):
                 if opt_launch_game:
                     # Launch the game via native Windows executable
                     exe_launcher = os.path.join(install_path, "Crazyy-Simulation.exe")

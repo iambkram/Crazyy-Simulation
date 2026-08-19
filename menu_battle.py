@@ -64,6 +64,10 @@ class MenuBattleSimulation:
                 'r': random.choice([1, 1, 2])
             })
 
+        self.tint_overlay = pygame.Surface((800, 600), pygame.SRCALPHA)
+        self.tint_overlay.fill((5, 8, 18, 125))
+        self.shield_surf = pygame.Surface((70, 70), pygame.SRCALPHA)
+
         # Pre-seed initial battlefield enemies so it's active immediately
         self._seed_initial_battle()
 
@@ -457,6 +461,4 @@ class MenuBattleSimulation:
             screen.blit(shield_surf, (p_rect.centerx - shield_r, p_rect.centery - shield_r))
 
         # --- F. Frosted Menu Tint (Keeps text & buttons perfectly readable) ---
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((5, 8, 18, 125))  # Smooth transparent dark tint
-        screen.blit(overlay, (0, 0))
+        screen.blit(self.tint_overlay, (0, 0))
