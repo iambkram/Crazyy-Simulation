@@ -1,594 +1,252 @@
-import pygame
-import os
-import sys
-import shutil
-import subprocess
-import math
-import random
-import time
-import json
-
-# =============================================================================
-# CRAZYY SIMULATION - OFFICIAL WINDOWS SETUP & INSTALLATION WIZARD
-# =============================================================================
-
-pygame.init()
-pygame.font.init()
-
-SETUP_WIDTH = 760
-SETUP_HEIGHT = 540
-
-screen = pygame.display.set_mode((SETUP_WIDTH, SETUP_HEIGHT))
-pygame.display.set_caption("Crazyy Simulation - Setup Wizard")
-
-# Try loading window icon
+"""
+Crazyy Simulation - Windows Setup Wizard
+Self-contained: bundles game assets inside EXE, installs like a real application.
+"""
+import ctypes
 try:
-    if os.path.exists("icon.ico"):
-        setup_icon = pygame.image.load("icon.ico")
-        pygame.display.set_icon(setup_icon)
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("iambkram.crazyysimulation.setup.1")
 except Exception:
     pass
 
-# Fonts
-FONT_TITLE  = pygame.font.SysFont("Impact", 44)
-FONT_HEADER = pygame.font.SysFont("Impact", 28)
-FONT_SUB    = pygame.font.SysFont("Arial Black", 14)
-FONT_BODY   = pygame.font.SysFont("Segoe UI", 14)
-FONT_BODY_B = pygame.font.SysFont("Segoe UI Bold", 14)
-FONT_MONO   = pygame.font.SysFont("Consolas", 12)
-FONT_TINY   = pygame.font.SysFont("Segoe UI", 12)
+import pygame, os, sys, json, shutil, subprocess, threading, math, random
 
-# Colors
-NEON_CYAN   = (0, 230, 255)
-NEON_PINK   = (255, 45, 120)
-NEON_GREEN  = (0, 255, 140)
-NEON_ORANGE = (255, 140, 20)
-NEON_GOLD   = (255, 205, 40)
-NEON_BLUE   = (40, 140, 255)
-NEON_PURPLE = (180, 50, 240)
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    BUNDLE_DIR = sys._MEIPASS
+else:
+    BUNDLE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-WHITE       = (255, 255, 255)
-LIGHT_GRAY  = (200, 210, 225)
-MID_GRAY    = (110, 120, 140)
-DARK_GRAY   = (35, 42, 58)
-PANEL_BG    = (14, 18, 28)
-PANEL_MID   = (20, 26, 42)
-BLACK       = (6, 8, 14)
-RED         = (255, 60, 80)
+DEFAULT_INSTALL_DIR = os.path.join(
+    os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+    "Programs", "Crazyy-Simulation"
+)
 
-# Paths
-SOURCE_DIR = os.path.abspath(os.path.dirname(__file__))
-DEFAULT_INSTALL_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'Programs', 'Crazyy-Simulation')
-DESKTOP_DIR = os.path.join(os.environ.get('USERPROFILE', os.path.expanduser('~')), 'Desktop')
-START_MENU_DIR = os.path.join(os.environ.get('APPDATA', ''), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Crazyy Simulation')
+try:
+    DESKTOP_DIR = subprocess.check_output(
+        ["powershell", "-NoProfile", "-Command", "[Environment]::GetFolderPath(\"Desktop\")"],
+        creationflags=0x08000000).decode().strip()
+    SM_RAW = subprocess.check_output(
+        ["powershell", "-NoProfile", "-Command", "[Environment]::GetFolderPath(\"StartMenu\")"],
+        creationflags=0x08000000).decode().strip()
+    START_MENU_DIR = os.path.join(SM_RAW, "Programs", "Crazyy Simulation")
+except Exception:
+    DESKTOP_DIR    = os.path.join(os.environ.get("USERPROFILE", "~"), "Desktop")
+    START_MENU_DIR = os.path.join(os.environ.get("APPDATA",""), "Microsoft","Windows","Start Menu","Programs","Crazyy Simulation")
 
-# Wizard Pages
-PAGE_WELCOME     = 0
-PAGE_PERMISSIONS = 1
-PAGE_DIRECTORY   = 2
-PAGE_INSTALLING  = 3
-PAGE_COMPLETE    = 4
+BLACK=(0,0,0); WHITE=(255,255,255); NEON_CYAN=(0,255,255); NEON_PINK=(255,0,200)
+NEON_BLUE=(30,120,255); NEON_GREEN=(0,255,80); DARK_BG=(8,5,20); CARD_BG=(15,10,35)
+DIM_GREY=(60,60,80); RED=(220,50,50)
 
-current_page = PAGE_WELCOME
+PAGE_WELCOME=0; PAGE_OPTIONS=1; PAGE_INSTALL=2; PAGE_DONE=3
 
-# Options
-opt_grant_perms     = True
-opt_desktop_icon    = True
-opt_start_menu      = True
-opt_launch_game     = True
-install_path        = DEFAULT_INSTALL_DIR
+pygame.init()
+pygame.mixer.init()
+W,H=800,600
+screen=pygame.display.set_mode((W,H))
+pygame.display.set_caption("Crazyy Simulation - Setup")
+try:
+    pygame.display.set_icon(pygame.image.load(os.path.join(BUNDLE_DIR,"icon.ico")))
+except:
+    pass
 
-# Installation Progress State
-install_progress    = 0.0
-install_step_index  = 0
-install_logs        = []
-install_finished    = False
-install_error       = None
+try:
+    FONT_TITLE=pygame.font.Font(os.path.join(BUNDLE_DIR,"game_assets","PressStart2P.ttf"),20)
+    FONT_MED  =pygame.font.Font(os.path.join(BUNDLE_DIR,"game_assets","PressStart2P.ttf"),11)
+    FONT_SMALL=pygame.font.Font(os.path.join(BUNDLE_DIR,"game_assets","PressStart2P.ttf"),8)
+except:
+    FONT_TITLE=pygame.font.SysFont("Consolas",22,bold=True)
+    FONT_MED  =pygame.font.SysFont("Consolas",13)
+    FONT_SMALL=pygame.font.SysFont("Consolas",11)
 
-# Animated Background Stars
-stars = []
-for _ in range(90):
-    stars.append({
-        'x': random.uniform(0, SETUP_WIDTH),
-        'y': random.uniform(0, SETUP_HEIGHT),
-        'spd': random.uniform(0.3, 1.2),
-        'sz': random.uniform(1.0, 2.5),
-        'col': random.choice([(140, 180, 255), (200, 240, 255), (100, 140, 220)])
-    })
+page=PAGE_WELCOME; install_path=DEFAULT_INSTALL_DIR
+opt_desktop=True; opt_start_menu=True
+install_logs=[]; install_progress=0.0; install_done=False; install_error=None
+stars=[[random.randint(0,W),random.randint(0,H),random.uniform(0.3,1.2),random.randint(60,200)] for _ in range(120)]
+pulse_t=0.0
 
-def draw_setup_background(surface, pulse_t):
-    """Draw ambient cyber neon starfield and grid background."""
-    surface.fill(BLACK)
-    
-    # Stars
+def dtxt(surf,text,font,color,cx,cy):
+    s=font.render(text,True,color); surf.blit(s,s.get_rect(center=(cx,cy)))
+
+def neon_rect(surf,color,rect,w=2,r=10):
+    pygame.draw.rect(surf,color,rect,w,border_radius=r)
+
+def btn(surf,text,cx,cy,bw=220,bh=44,hov=False):
+    col=NEON_CYAN if hov else NEON_BLUE
+    bg=(0,40,80) if hov else (5,15,40)
+    r=pygame.Rect(cx-bw//2,cy-bh//2,bw,bh)
+    pygame.draw.rect(surf,bg,r,border_radius=10)
+    neon_rect(surf,col,r); dtxt(surf,text,FONT_MED,col,cx,cy)
+    return r
+
+def draw_stars():
     for s in stars:
-        s['y'] += s['spd']
-        if s['y'] > SETUP_HEIGHT:
-            s['y'] = 0
-            s['x'] = random.uniform(0, SETUP_WIDTH)
-        pygame.draw.circle(surface, s['col'], (int(s['x']), int(s['y'])), int(s['sz']))
+        s[1]+=s[2]
+        if s[1]>H: s[1]=0; s[0]=random.randint(0,W)
+        br=max(30,int(s[3])); pygame.draw.rect(screen,(br,br,br),(int(s[0]),int(s[1]),2,2))
 
-    # Glowing border frame
-    border_rect = pygame.Rect(12, 12, SETUP_WIDTH - 24, SETUP_HEIGHT - 24)
-    pygame.draw.rect(surface, PANEL_BG, border_rect, border_radius=14)
-    
-    pulse_a = int(120 + 60 * math.sin(pulse_t * 2))
-    pulse_surf = pygame.Surface((SETUP_WIDTH, SETUP_HEIGHT), pygame.SRCALPHA)
-    pygame.draw.rect(pulse_surf, (*NEON_CYAN, pulse_a), border_rect, width=2, border_radius=14)
-    surface.blit(pulse_surf, (0, 0))
-
-def draw_setup_header(surface, title, subtitle):
-    """Draw standardized wizard header banner."""
-    header_rect = pygame.Rect(14, 14, SETUP_WIDTH - 28, 80)
-    h_surf = pygame.Surface((header_rect.width, header_rect.height), pygame.SRCALPHA)
-    pygame.draw.rect(h_surf, (10, 14, 24, 240), h_surf.get_rect(), border_top_left_radius=12, border_top_right_radius=12)
-    surface.blit(h_surf, header_rect.topleft)
-
-    # Title & Subtitle
-    t_surf = FONT_HEADER.render(title, True, NEON_CYAN)
-    surface.blit(t_surf, (36, 26))
-    s_surf = FONT_TINY.render(subtitle, True, LIGHT_GRAY)
-    surface.blit(s_surf, (38, 62))
-
-    # Divider
-    pygame.draw.line(surface, NEON_CYAN, (36, 94), (SETUP_WIDTH - 36, 94), 1)
-
-def draw_setup_footer(surface):
-    """Draw wizard footer bar."""
-    footer_rect = pygame.Rect(14, SETUP_HEIGHT - 74, SETUP_WIDTH - 28, 60)
-    f_surf = pygame.Surface((footer_rect.width, footer_rect.height), pygame.SRCALPHA)
-    pygame.draw.rect(f_surf, (10, 14, 24, 240), f_surf.get_rect(), border_bottom_left_radius=12, border_bottom_right_radius=12)
-    surface.blit(f_surf, footer_rect.topleft)
-    pygame.draw.line(surface, (40, 50, 70), (36, SETUP_HEIGHT - 74), (SETUP_WIDTH - 36, SETUP_HEIGHT - 74), 1)
-
-def draw_neon_checkbox(surface, rect, label, checked, mouse_pos):
-    """Draw a cyber-themed glowing checkbox."""
-    box_rect = pygame.Rect(rect.x, rect.y + 2, 22, 22)
-    is_hover = rect.collidepoint(mouse_pos)
-    
-    # Fill
-    bg_col = (20, 35, 50) if checked else (15, 18, 26)
-    pygame.draw.rect(surface, bg_col, box_rect, border_radius=6)
-    border_col = NEON_CYAN if (checked or is_hover) else MID_GRAY
-    pygame.draw.rect(surface, border_col, box_rect, width=2, border_radius=6)
-    
-    if checked:
-        # Draw checkmark
-        pts = [(box_rect.x + 5, box_rect.y + 11), (box_rect.x + 9, box_rect.y + 16), (box_rect.x + 17, box_rect.y + 6)]
-        pygame.draw.lines(surface, NEON_GREEN, False, pts, 3)
-
-    # Label
-    lbl_col = WHITE if checked else LIGHT_GRAY
-    lbl_surf = FONT_BODY_B.render(label, True, lbl_col)
-    surface.blit(lbl_surf, (box_rect.right + 12, rect.y + 3))
-
-def draw_setup_btn(surface, rect, text, color, mouse_pos, pulse_t=0.0, disabled=False):
-    """Draw a glowing installer button."""
-    is_hover = rect.collidepoint(mouse_pos) and not disabled
-    
-    if disabled:
-        pygame.draw.rect(surface, (20, 24, 32), rect, border_radius=10)
-        pygame.draw.rect(surface, (45, 50, 60), rect, width=1, border_radius=10)
-        t_surf = FONT_SUB.render(text, True, (80, 90, 105))
-        surface.blit(t_surf, t_surf.get_rect(center=rect.center))
-        return False
-
-    bg_col = (int(color[0]*0.25), int(color[1]*0.25), int(color[2]*0.25))
-    if is_hover:
-        bg_col = (min(255, bg_col[0] + 35), min(255, bg_col[1] + 35), min(255, bg_col[2] + 35))
-    
-    pygame.draw.rect(surface, bg_col, rect, border_radius=10)
-    pygame.draw.rect(surface, color, rect, width=2 if is_hover else 1, border_radius=10)
-    
-    if is_hover:
-        glow_s = pygame.Surface((rect.width + 10, rect.height + 10), pygame.SRCALPHA)
-        pygame.draw.rect(glow_s, (*color, 70), glow_s.get_rect(), border_radius=14, width=2)
-        surface.blit(glow_s, (rect.x - 5, rect.y - 5))
-
-    t_surf = FONT_SUB.render(text, True, WHITE)
-    surface.blit(t_surf, t_surf.get_rect(center=rect.center))
-    return is_hover
-
-def create_windows_shortcut(target_path, shortcut_path, icon_path, working_dir):
-    """Create genuine Windows .lnk shortcut using PowerShell COM Object."""
+def shortcut(target,lnk,icon,wd):
     try:
-        os.makedirs(os.path.dirname(shortcut_path), exist_ok=True)
-        ps_script = f"""
-        $WScriptShell = New-Object -ComObject WScript.Shell
-        $Shortcut = $WScriptShell.CreateShortcut('{shortcut_path}')
-        $Shortcut.TargetPath = '{target_path}'
-        $Shortcut.WorkingDirectory = '{working_dir}'
-        $Shortcut.IconLocation = '{icon_path}'
-        $Shortcut.Description = 'Play Crazyy Simulation - Galaxy Warfare'
-        $Shortcut.Save()
-        """
-        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
-                       creationflags=0x08000000, check=True)
-        return True
-    except Exception as e:
-        print("Shortcut error:", e)
-        return False
+        import pythoncom
+        pythoncom.CoInitialize()
+        import win32com.client
+        os.makedirs(os.path.dirname(lnk),exist_ok=True)
+        shell = win32com.client.Dispatch('WScript.Shell')
+        s = shell.CreateShortCut(lnk)
+        s.Targetpath = target
+        s.WorkingDirectory = wd
+        s.IconLocation = icon
+        s.save()
+    except Exception as ex:
+        install_logs.append(f"  [WARN] Shortcut: {ex}")
 
-def execute_installation_step(step_idx):
-    """Execute real file copy and shortcut generation steps."""
-    global install_logs, install_progress, install_finished, install_error
-    
+def do_install():
+    global install_progress,install_done,install_error
     try:
-        if step_idx == 0:
-            install_logs.append(">> Initializing Crazyy Simulation deployment engine...")
-            install_progress = 0.10
-        elif step_idx == 1:
-            install_logs.append(f">> Creating destination directory: {install_path}")
-            os.makedirs(install_path, exist_ok=True)
-            install_progress = 0.25
-        elif step_idx == 2:
-            install_logs.append(">> Copying core game scripts & modules...")
-            # Copy all game python scripts
-            py_files = ["main.py", "settings.py", "assets.py", "branding.py", "menu_battle.py", "vfx.py"]
-            for f in py_files:
-                src_f = os.path.join(SOURCE_DIR, f)
-                if os.path.exists(src_f):
-                    shutil.copy2(src_f, os.path.join(install_path, f))
-            # Copy icon
-            if os.path.exists(os.path.join(SOURCE_DIR, "icon.ico")):
-                shutil.copy2(os.path.join(SOURCE_DIR, "icon.ico"), os.path.join(install_path, "icon.ico"))
-            # Copy native Windows executable
-            if os.path.exists(os.path.join(SOURCE_DIR, "Crazyy-Simulation.exe")):
-                shutil.copy2(os.path.join(SOURCE_DIR, "Crazyy-Simulation.exe"), os.path.join(install_path, "Crazyy-Simulation.exe"))
+        install_logs.append(">> Creating install directory...")
+        os.makedirs(install_path,exist_ok=True); install_progress=0.10
 
-            # Safe copy game_assets without rmtree to prevent WinError 32
-            install_logs.append(">> Deploying audiovisual game assets...")
-            src_assets = os.path.join(SOURCE_DIR, "game_assets")
-            dst_assets = os.path.join(install_path, "game_assets")
-            if os.path.exists(src_assets):
-                os.makedirs(dst_assets, exist_ok=True)
-                for root, dirs, files in os.walk(src_assets):
-                    rel_dir = os.path.relpath(root, src_assets)
-                    target_dir = os.path.join(dst_assets, rel_dir) if rel_dir != "." else dst_assets
-                    os.makedirs(target_dir, exist_ok=True)
-                    for file in files:
-                        src_file = os.path.join(root, file)
-                        dst_file = os.path.join(target_dir, file)
-                        try:
-                            shutil.copy2(src_file, dst_file)
-                        except Exception:
-                            pass
-            install_progress = 0.55
-        elif step_idx == 3:
-            install_logs.append(">> Initializing game save profile & configuration...")
-            save_path = os.path.join(install_path, "save.json")
-            if not os.path.exists(save_path):
-                default_save = {
-                    "coins": 0, "hp": 200, "hp_step": 0, "speed": 7, "speed_step": 0,
-                    "bullets": 1, "bullet_step": 0, "max_galaxy_level": 1, "max_nebula_level": 1,
-                    "max_blackhole_level": 1, "env2_unlocked": False, "env3_unlocked": False,
-                    "control_type": "PC", "music_vol": 0.5, "sfx_vol": 0.7
-                }
-                with open(save_path, "w") as sf:
-                    json.dump(default_save, sf, indent=4)
-            install_progress = 0.70
-        elif step_idx == 4:
-            install_logs.append(">> Configuring Crazyy-Simulation Windows launcher...")
-            # Save exact Python runtime path for launcher
-            cfg_file = os.path.join(install_path, "python_path.txt")
-            with open(cfg_file, "w") as pf:
-                pf.write(sys.executable)
+        install_logs.append(">> Copying game executable...")
+        src_exe=os.path.join(BUNDLE_DIR,"Crazyy-Simulation.exe")
+        dst_exe=os.path.join(install_path,"Crazyy-Simulation.exe")
+        if os.path.exists(src_exe): shutil.copy2(src_exe,dst_exe)
+        install_progress=0.30
 
-            # Create standard batch launcher fallback
-            launcher_bat = os.path.join(install_path, "Crazyy-Simulation.bat")
-            with open(launcher_bat, "w") as bf:
-                bf.write(f'@echo off\ncd /d "{install_path}"\nstart "" "{sys.executable}" main.py\nexit\n')
+        install_logs.append(">> Copying icon...")
+        src_ico=os.path.join(BUNDLE_DIR,"icon.ico")
+        dst_ico=os.path.join(install_path,"icon.ico")
+        if os.path.exists(src_ico): shutil.copy2(src_ico,dst_ico)
+        install_progress=0.40
 
-            install_progress = 0.85
-        elif step_idx == 5:
-            icon_file = os.path.join(install_path, "icon.ico")
-            exe_target = os.path.join(install_path, "Crazyy-Simulation.exe")
-            if not os.path.exists(exe_target):
-                exe_target = os.path.join(install_path, "Crazyy-Simulation.bat")
-            
-            if opt_desktop_icon:
-                install_logs.append(">> Creating Windows Desktop Shortcut...")
-                d_lnk = os.path.join(DESKTOP_DIR, "Crazyy Simulation.lnk")
-                create_windows_shortcut(exe_target, d_lnk, icon_file, install_path)
-                
-            if opt_start_menu:
-                install_logs.append(">> Registering in Windows Start Menu & App Search...")
-                s_lnk = os.path.join(START_MENU_DIR, "Crazyy Simulation.lnk")
-                create_windows_shortcut(exe_target, s_lnk, icon_file, install_path)
-                
-            install_logs.append(">> Setup completed successfully! All files verified.")
-            install_progress = 1.0
-            install_finished = True
-    except Exception as e:
-        install_error = str(e)
-        install_logs.append(f">> ERROR: {install_error}")
+        install_logs.append(">> Deploying game assets...")
+        src_a=os.path.join(BUNDLE_DIR,"game_assets"); dst_a=os.path.join(install_path,"game_assets")
+        if os.path.exists(src_a):
+            for root,_,files in os.walk(src_a):
+                rel=os.path.relpath(root,src_a)
+                d=os.path.join(dst_a,rel) if rel!="." else dst_a
+                os.makedirs(d,exist_ok=True)
+                for f in files:
+                    try: shutil.copy2(os.path.join(root,f),os.path.join(d,f))
+                    except: pass
+        install_progress=0.65
 
-# =============================================================================
-# MAIN WIZARD LOOP
-# =============================================================================
+        install_logs.append(">> Writing default save profile...")
+        sdst=os.path.join(install_path,"save.json")
+        if not os.path.exists(sdst):
+            with open(sdst,"w") as sf:
+                json.dump({"coins":0,"hp":200,"hp_step":0,"speed":7,"speed_step":0,
+                    "bullets":1,"bullet_step":0,"max_galaxy_level":1,"max_nebula_level":1,
+                    "max_blackhole_level":1,"env2_unlocked":False,"env3_unlocked":False,
+                    "control_type":"PC","music_vol":0.5,"sfx_vol":0.7,
+                    "show_fps":False,"visual_quality":"high","screen_shake":True,
+                    "display_mode":"windowed"},sf,indent=4)
+        install_progress=0.75
 
-clock = pygame.time.Clock()
-running = True
-pulse_ticker = 0.0
+        install_logs.append(">> Creating shortcuts...")
+        ico_f=dst_ico if os.path.exists(dst_ico) else ""
+        if opt_desktop:
+            shortcut(dst_exe,os.path.join(DESKTOP_DIR,"Crazyy Simulation.lnk"),ico_f,install_path)
+        if opt_start_menu:
+            shortcut(dst_exe,os.path.join(START_MENU_DIR,"Crazyy Simulation.lnk"),ico_f,install_path)
+        install_progress=0.88
 
-btn_next_rect = pygame.Rect(SETUP_WIDTH - 170, SETUP_HEIGHT - 62, 140, 42)
-btn_back_rect = pygame.Rect(SETUP_WIDTH - 325, SETUP_HEIGHT - 62, 140, 42)
-btn_cancel_rect = pygame.Rect(36, SETUP_HEIGHT - 62, 130, 42)
+        install_logs.append(">> Registering application...")
+        try:
+            import winreg
+            kp=r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\CrazzyySimulation"
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER,kp) as k:
+                winreg.SetValueEx(k,"DisplayName",0,winreg.REG_SZ,"Crazyy Simulation")
+                winreg.SetValueEx(k,"DisplayVersion",0,winreg.REG_SZ,"1.0.0")
+                winreg.SetValueEx(k,"Publisher",0,winreg.REG_SZ,"iambkram")
+                winreg.SetValueEx(k,"InstallLocation",0,winreg.REG_SZ,install_path)
+                winreg.SetValueEx(k,"DisplayIcon",0,winreg.REG_SZ,ico_f)
+        except: pass
+        install_progress=1.0
+        install_logs.append(">> Done! Crazyy Simulation installed successfully!")
+        install_done=True
+    except Exception as ex:
+        install_error=str(ex); install_logs.append(f">> ERROR: {ex}"); install_done=True
 
-step_timer = 0
+def run():
+    global page,opt_desktop,opt_start_menu,pulse_t
+    clock=pygame.time.Clock(); running=True; th=None
+    while running:
+        pulse_t+=0.04; screen.fill(DARK_BG); draw_stars()
+        pygame.draw.rect(screen,NEON_BLUE,(2,2,W-4,H-4),2,border_radius=8)
+        pygame.draw.rect(screen,NEON_PINK,(6,6,W-12,H-12),1,border_radius=6)
+        mx,my=pygame.mouse.get_pos(); clicked=False
+        for ev in pygame.event.get():
+            if ev.type==pygame.QUIT: running=False
+            if ev.type==pygame.MOUSEBUTTONDOWN and ev.button==1: clicked=True
+            if ev.type==pygame.KEYDOWN and ev.key==pygame.K_ESCAPE and page in(PAGE_WELCOME,PAGE_DONE): running=False
+        a=int(200+55*math.sin(pulse_t))
+        dtxt(screen,"CRAZYY SIMULATION",FONT_TITLE,(*NEON_CYAN[:3],),W//2,45)
+        dtxt(screen,"SETUP WIZARD  v1.0.0",FONT_SMALL,NEON_PINK,W//2,72)
+        pygame.draw.line(screen,NEON_BLUE,(40,90),(W-40,90),1)
 
-# Cache disk usage (computed once per page transition, not every frame)
-cached_disk_free = None
+        if page==PAGE_WELCOME:
+            dtxt(screen,"WELCOME!",FONT_MED,NEON_CYAN,W//2,145)
+            for i,ln in enumerate(["This wizard will install Crazyy Simulation","on your Windows PC.","",
+                "Click NEXT to continue or QUIT to exit."]):
+                dtxt(screen,ln,FONT_SMALL,WHITE,W//2,210+i*28)
+            nr=btn(screen,"NEXT  >",W//2+110,H-80,hov=pygame.Rect(W//2,H-102,220,44).collidepoint(mx,my))
+            qr=btn(screen,"QUIT",W//2-110,H-80,bw=160,hov=pygame.Rect(W//2-200,H-102,160,44).collidepoint(mx,my))
+            if clicked:
+                if nr.collidepoint(mx,my): page=PAGE_OPTIONS
+                elif qr.collidepoint(mx,my): running=False
 
-setup_key_enter = False
-setup_key_escape = False
-setup_key_space = False
-setup_key_tab = False
-setup_focused = 0  # Keyboard focus index for checkboxes/buttons
+        elif page==PAGE_OPTIONS:
+            dtxt(screen,"INSTALL OPTIONS",FONT_MED,NEON_CYAN,W//2,135)
+            def cb(label,val,bx,by):
+                r=pygame.Rect(bx-10,by-10,20,20); pygame.draw.rect(screen,NEON_BLUE,r,2,border_radius=4)
+                if val:
+                    pygame.draw.line(screen,NEON_GREEN,(bx-5,by),(bx,by+6),2)
+                    pygame.draw.line(screen,NEON_GREEN,(bx,by+6),(bx+8,by-5),2)
+                dtxt(screen,label,FONT_SMALL,WHITE,bx+130,by); return r
+            c1=cb("Add Desktop shortcut",opt_desktop,140,220)
+            c2=cb("Add Start Menu entry",opt_start_menu,140,265)
+            if clicked:
+                if c1.collidepoint(mx,my): opt_desktop=not opt_desktop
+                if c2.collidepoint(mx,my): opt_start_menu=not opt_start_menu
+            dtxt(screen,"Install to:",FONT_SMALL,DIM_GREY,W//2,330)
+            dtxt(screen,install_path[:60],FONT_SMALL,NEON_CYAN,W//2,358)
+            br=btn(screen,"< BACK",W//2-110,H-80,bw=160,hov=pygame.Rect(W//2-190,H-102,160,44).collidepoint(mx,my))
+            ir=btn(screen,"INSTALL",W//2+110,H-80,hov=pygame.Rect(W//2,H-102,220,44).collidepoint(mx,my))
+            if clicked:
+                if br.collidepoint(mx,my): page=PAGE_WELCOME
+                elif ir.collidepoint(mx,my):
+                    page=PAGE_INSTALL; th=threading.Thread(target=do_install,daemon=True); th.start()
 
-while running:
-    pulse_ticker += 0.05
-    mx, my = pygame.mouse.get_pos()
-    mouse_clicked = False
-    setup_key_enter = False
-    setup_key_escape = False
-    setup_key_space = False
-    setup_key_tab = False
+        elif page==PAGE_INSTALL:
+            dtxt(screen,"INSTALLING...",FONT_MED,NEON_CYAN,W//2,125)
+            bw=W-120; bx,by=60,162
+            pygame.draw.rect(screen,CARD_BG,(bx,by,bw,24),border_radius=12)
+            fw=int(bw*install_progress)
+            if fw>0: pygame.draw.rect(screen,NEON_GREEN,(bx,by,fw,24),border_radius=12)
+            neon_rect(screen,NEON_BLUE,(bx,by,bw,24),r=12)
+            dtxt(screen,f"{int(install_progress*100)}%",FONT_SMALL,WHITE,W//2,by+12)
+            ly=205
+            for ln in install_logs[-13:]:
+                dtxt(screen,ln[:78],FONT_SMALL,NEON_CYAN if ">>" in ln else DIM_GREY,W//2,ly); ly+=24
+            if install_done: page=PAGE_DONE
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:
-                mouse_clicked = True
-        elif event.type == pygame.KEYDOWN:
-            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                setup_key_enter = True
-            elif event.key == pygame.K_ESCAPE:
-                setup_key_escape = True
-            elif event.key == pygame.K_SPACE:
-                setup_key_space = True
-            elif event.key == pygame.K_TAB:
-                setup_key_tab = True
+        elif page==PAGE_DONE:
+            if install_error:
+                dtxt(screen,"INSTALLATION FAILED",FONT_MED,RED,W//2,155)
+                dtxt(screen,install_error[:65],FONT_SMALL,WHITE,W//2,205)
+            else:
+                dtxt(screen,"INSTALLATION COMPLETE!",FONT_MED,NEON_GREEN,W//2,155)
+                dtxt(screen,"Crazyy Simulation is ready to play.",FONT_SMALL,WHITE,W//2,200)
+                dtxt(screen,"Desktop shortcut created!" if opt_desktop else "",FONT_SMALL,NEON_CYAN,W//2,230)
+            dtxt(screen,"Thank you for playing!",FONT_SMALL,DIM_GREY,W//2,300)
+            lr=btn(screen,"LAUNCH GAME",W//2,H-145,bw=240,hov=pygame.Rect(W//2-120,H-167,240,44).collidepoint(mx,my))
+            cr=btn(screen,"CLOSE",W//2,H-85,bw=180,hov=pygame.Rect(W//2-90,H-107,180,44).collidepoint(mx,my))
+            if clicked:
+                gexe=os.path.join(install_path,"Crazyy-Simulation.exe")
+                if lr.collidepoint(mx,my) and os.path.exists(gexe):
+                    subprocess.Popen([gexe],cwd=install_path); running=False
+                elif cr.collidepoint(mx,my): running=False
 
-    # 1. Background
-    draw_setup_background(screen, pulse_ticker)
+        pygame.display.flip(); clock.tick(60)
+    pygame.quit()
 
-    # 2. Page Specific Content
-    if current_page == PAGE_WELCOME:
-        draw_setup_header(screen, "CRAZYY SIMULATION", "Galaxy Warfare · Setup & Installation Wizard v1.0.0")
-
-        # Welcome Card
-        card_rect = pygame.Rect(40, 115, SETUP_WIDTH - 80, 320)
-        pygame.draw.rect(screen, PANEL_MID, card_rect, border_radius=14)
-        pygame.draw.rect(screen, NEON_CYAN, card_rect, width=1, border_radius=14)
-
-        # Welcome Insignia & Text
-        welcome_title = FONT_HEADER.render("Welcome to the Crazyy Simulation Setup", True, WHITE)
-        screen.blit(welcome_title, (65, 140))
-        
-        info_lines = [
-            "This wizard will install Crazyy Simulation on your Windows computer.",
-            "Features included in this build:",
-            "  • 3 Dynamic Environments: Galaxy Sector, Nebula Zone & Black Hole Singularity",
-            "  • 40 Thrilling Mission Tiers per Environment with Progressive Level Unlocking",
-            "  • Cinematic 'IAMBKRAM' Neon Branding & Supernova Boss Destruction Sequence",
-            "  • Full Offline Support, Performance Optimization & Windows Desktop Integration",
-            "",
-            "Click [ NEXT > ] to review authorizations and configure your installation."
-        ]
-        
-        for idx, line in enumerate(info_lines):
-            col = NEON_GOLD if "•" in line else LIGHT_GRAY
-            f = FONT_BODY_B if "•" in line else FONT_BODY
-            screen.blit(f.render(line, True, col), (65, 195 + idx * 24))
-
-        # Status Tag
-        tag_rect = pygame.Rect(65, 385, 420, 32)
-        pygame.draw.rect(screen, (15, 30, 45), tag_rect, border_radius=8)
-        pygame.draw.rect(screen, NEON_GREEN, tag_rect, width=1, border_radius=8)
-        screen.blit(FONT_TINY.render("✔ SYSTEM STATUS: Windows OS Compatible · Ready to Deploy", True, NEON_GREEN), (78, 392))
-
-        # Footer & Buttons
-        draw_setup_footer(screen)
-        draw_setup_btn(screen, btn_cancel_rect, "CANCEL", RED, (mx, my), pulse_ticker)
-        draw_setup_btn(screen, btn_next_rect, "NEXT >", NEON_CYAN, (mx, my), pulse_ticker)
-
-        if mouse_clicked or setup_key_enter or setup_key_escape:
-            if setup_key_escape or (mouse_clicked and btn_cancel_rect.collidepoint(mx, my)):
-                running = False
-            elif setup_key_enter or (mouse_clicked and btn_next_rect.collidepoint(mx, my)):
-                current_page = PAGE_PERMISSIONS
-
-    elif current_page == PAGE_PERMISSIONS:
-        draw_setup_header(screen, "SYSTEM PERMISSIONS & AUTHORIZATION", "Review required permissions and choose desktop shortcuts")
-
-        card_rect = pygame.Rect(40, 115, SETUP_WIDTH - 80, 320)
-        pygame.draw.rect(screen, PANEL_MID, card_rect, border_radius=14)
-        pygame.draw.rect(screen, NEON_CYAN, card_rect, width=1, border_radius=14)
-
-        # Permissions List
-        chk1_rect = pygame.Rect(65, 145, 600, 45)
-        chk2_rect = pygame.Rect(65, 210, 600, 45)
-        chk3_rect = pygame.Rect(65, 275, 600, 45)
-
-        draw_neon_checkbox(screen, chk1_rect, "Authorize File System & Local Game Installation (Required)", opt_grant_perms, (mx, my))
-        screen.blit(FONT_TINY.render("Allows installer to extract assets and maintain offline player progression.", True, MID_GRAY), (100, 172))
-
-        draw_neon_checkbox(screen, chk2_rect, "Create Desktop Shortcut on Windows", opt_desktop_icon, (mx, my))
-        screen.blit(FONT_TINY.render("Places a 'Crazyy Simulation' launcher icon directly on your Desktop.", True, MID_GRAY), (100, 237))
-
-        draw_neon_checkbox(screen, chk3_rect, "Register in Windows Start Menu & App Search", opt_start_menu, (mx, my))
-        screen.blit(FONT_TINY.render("Allows searching and launching the game from the Windows Taskbar / App Bar.", True, MID_GRAY), (100, 302))
-
-        # Security Seal
-        seal_rect = pygame.Rect(65, 385, 600, 32)
-        pygame.draw.rect(screen, (20, 28, 40), seal_rect, border_radius=8)
-        pygame.draw.rect(screen, NEON_GOLD, seal_rect, width=1, border_radius=8)
-        screen.blit(FONT_TINY.render("🛡 VERIFIED BUILD: Clean, safe, self-contained Python package · Developer: @iambkram", True, NEON_GOLD), (78, 392))
-
-        # Footer & Buttons
-        draw_setup_footer(screen)
-        draw_setup_btn(screen, btn_cancel_rect, "CANCEL", RED, (mx, my), pulse_ticker)
-        draw_setup_btn(screen, btn_back_rect, "< BACK", MID_GRAY, (mx, my), pulse_ticker)
-        draw_setup_btn(screen, btn_next_rect, "NEXT >", NEON_CYAN, (mx, my), pulse_ticker, disabled=not opt_grant_perms)
-
-        if mouse_clicked or setup_key_enter or setup_key_escape:
-            if mouse_clicked and chk1_rect.collidepoint(mx, my):
-                opt_grant_perms = not opt_grant_perms
-            elif mouse_clicked and chk2_rect.collidepoint(mx, my):
-                opt_desktop_icon = not opt_desktop_icon
-            elif mouse_clicked and chk3_rect.collidepoint(mx, my):
-                opt_start_menu = not opt_start_menu
-            elif setup_key_escape or (mouse_clicked and btn_cancel_rect.collidepoint(mx, my)):
-                running = False
-            elif mouse_clicked and btn_back_rect.collidepoint(mx, my):
-                current_page = PAGE_WELCOME
-            elif (setup_key_enter or (mouse_clicked and btn_next_rect.collidepoint(mx, my))) and opt_grant_perms:
-                current_page = PAGE_DIRECTORY
-                # Cache disk space on page transition
-                try:
-                    total_b, used_b, free_b = shutil.disk_usage(os.path.splitdrive(install_path)[0] or "C:")
-                    cached_disk_free = free_b / (1024**3)
-                except Exception:
-                    cached_disk_free = None
-
-    elif current_page == PAGE_DIRECTORY:
-        draw_setup_header(screen, "DESTINATION LOCATION", "Select the destination folder where game files will be installed")
-
-        card_rect = pygame.Rect(40, 115, SETUP_WIDTH - 80, 320)
-        pygame.draw.rect(screen, PANEL_MID, card_rect, border_radius=14)
-        pygame.draw.rect(screen, NEON_CYAN, card_rect, width=1, border_radius=14)
-
-        screen.blit(FONT_BODY.render("Setup will install Crazyy Simulation into the following folder:", True, LIGHT_GRAY), (65, 145))
-
-        # Directory Input Panel
-        dir_box = pygame.Rect(65, 180, 600, 48)
-        pygame.draw.rect(screen, (10, 14, 22), dir_box, border_radius=8)
-        pygame.draw.rect(screen, NEON_CYAN, dir_box, width=1, border_radius=8)
-        screen.blit(FONT_MONO.render(install_path, True, WHITE), (78, 195))
-
-        # Disk space calculation (uses cached value from page transition)
-        if cached_disk_free is not None:
-            free_text = f"Space available on drive: {cached_disk_free:.2f} GB"
-        else:
-            free_text = "Space available: > 10.0 GB"
-
-        screen.blit(FONT_BODY_B.render("Space required: ~42.0 MB", True, NEON_GOLD), (65, 255))
-        screen.blit(FONT_BODY.render(free_text, True, NEON_GREEN), (65, 285))
-        screen.blit(FONT_TINY.render("Ready to deploy game executable and progressive save system.", True, LIGHT_GRAY), (65, 340))
-
-        # Footer & Buttons
-        draw_setup_footer(screen)
-        draw_setup_btn(screen, btn_cancel_rect, "CANCEL", RED, (mx, my), pulse_ticker)
-        draw_setup_btn(screen, btn_back_rect, "< BACK", MID_GRAY, (mx, my), pulse_ticker)
-        draw_setup_btn(screen, btn_next_rect, "INSTALL NOW", NEON_GREEN, (mx, my), pulse_ticker)
-
-        if mouse_clicked or setup_key_enter or setup_key_escape:
-            if setup_key_escape or (mouse_clicked and btn_cancel_rect.collidepoint(mx, my)):
-                running = False
-            elif mouse_clicked and btn_back_rect.collidepoint(mx, my):
-                current_page = PAGE_PERMISSIONS
-            elif setup_key_enter or (mouse_clicked and btn_next_rect.collidepoint(mx, my)):
-                current_page = PAGE_INSTALLING
-                install_step_index = 0
-                install_logs.clear()
-                step_timer = pygame.time.get_ticks()
-
-    elif current_page == PAGE_INSTALLING:
-        draw_setup_header(screen, "INSTALLING CRAZYY SIMULATION", "Please wait while files and shortcuts are deployed...")
-
-        card_rect = pygame.Rect(40, 115, SETUP_WIDTH - 80, 320)
-        pygame.draw.rect(screen, PANEL_MID, card_rect, border_radius=14)
-        pygame.draw.rect(screen, NEON_CYAN, card_rect, width=1, border_radius=14)
-
-        # Progress bar
-        bar_bg = pygame.Rect(65, 155, 630, 24)
-        pygame.draw.rect(screen, (10, 14, 22), bar_bg, border_radius=12)
-        pygame.draw.rect(screen, (40, 50, 70), bar_bg, width=1, border_radius=12)
-
-        fill_w = int(626 * install_progress)
-        if fill_w > 0:
-            pygame.draw.rect(screen, NEON_CYAN, (67, 157, fill_w, 20), border_radius=10)
-            # Leading shimmer
-            pygame.draw.circle(screen, WHITE, (67 + fill_w - 4, 167), 6)
-
-        pct_text = f"{int(install_progress * 100)}%"
-        screen.blit(FONT_BODY_B.render(pct_text, True, WHITE), (bar_bg.right - 45, 130))
-
-        # Terminal Log Output Box
-        log_box = pygame.Rect(65, 195, 630, 215)
-        pygame.draw.rect(screen, (8, 12, 18), log_box, border_radius=8)
-        pygame.draw.rect(screen, (30, 40, 60), log_box, width=1, border_radius=8)
-
-        # Render recent logs
-        recent_logs = install_logs[-9:]
-        for l_i, log_line in enumerate(recent_logs):
-            l_col = NEON_GREEN if "successfully" in log_line else (RED if "ERROR" in log_line else NEON_CYAN)
-            screen.blit(FONT_MONO.render(log_line, True, l_col), (78, 205 + l_i * 22))
-
-        # Execute steps progressively
-        if not install_finished and install_error is None:
-            now_t = pygame.time.get_ticks()
-            if now_t - step_timer > 320:
-                execute_installation_step(install_step_index)
-                install_step_index += 1
-                step_timer = now_t
-        elif install_finished:
-            current_page = PAGE_COMPLETE
-
-        draw_setup_footer(screen)
-        draw_setup_btn(screen, btn_cancel_rect, "CANCEL", RED, (mx, my), pulse_ticker, disabled=True)
-        draw_setup_btn(screen, btn_next_rect, "NEXT >", NEON_CYAN, (mx, my), pulse_ticker, disabled=True)
-
-    elif current_page == PAGE_COMPLETE:
-        draw_setup_header(screen, "INSTALLATION COMPLETE", "Crazyy Simulation has been successfully installed!")
-
-        card_rect = pygame.Rect(40, 115, SETUP_WIDTH - 80, 320)
-        pygame.draw.rect(screen, PANEL_MID, card_rect, border_radius=14)
-        pygame.draw.rect(screen, NEON_GREEN, card_rect, width=2, border_radius=14)
-
-        # Success Banner
-        screen.blit(FONT_HEADER.render("Ready to Launch!", True, NEON_GREEN), (65, 140))
-        
-        complete_msgs = [
-            "Crazyy Simulation is fully configured on your system.",
-            f"• Installation Directory: {install_path}",
-            "• Desktop Shortcut: Created (Crazyy Simulation.lnk)",
-            "• Windows Start Menu & App Search: Registered",
-            "",
-            "You can launch the game anytime from the Desktop shortcut or Start Menu."
-        ]
-        for idx, line in enumerate(complete_msgs):
-            col = WHITE if "•" in line else LIGHT_GRAY
-            screen.blit(FONT_BODY.render(line, True, col), (65, 185 + idx * 24))
-
-        # Launch toggle
-        chk_launch = pygame.Rect(65, 360, 450, 35)
-        draw_neon_checkbox(screen, chk_launch, "Launch Crazyy Simulation now", opt_launch_game, (mx, my))
-
-        # Footer & Buttons
-        draw_setup_footer(screen)
-        draw_setup_btn(screen, btn_cancel_rect, "CLOSE", RED, (mx, my), pulse_ticker)
-        draw_setup_btn(screen, btn_next_rect, "FINISH", NEON_GREEN, (mx, my), pulse_ticker)
-
-        if mouse_clicked or setup_key_enter or setup_key_escape:
-            if mouse_clicked and chk_launch.collidepoint(mx, my):
-                opt_launch_game = not opt_launch_game
-            elif setup_key_escape or (mouse_clicked and btn_cancel_rect.collidepoint(mx, my)):
-                running = False
-            elif setup_key_enter or (mouse_clicked and btn_next_rect.collidepoint(mx, my)):
-                if opt_launch_game:
-                    # Launch the game via native Windows executable
-                    exe_launcher = os.path.join(install_path, "Crazyy-Simulation.exe")
-                    if os.path.exists(exe_launcher):
-                        os.startfile(exe_launcher)
-                    else:
-                        subprocess.Popen([sys.executable, "main.py"], cwd=install_path)
-                running = False
-
-    pygame.display.flip()
-    clock.tick(60)
-
-pygame.quit()
-sys.exit()
+if __name__=="__main__":
+    run()

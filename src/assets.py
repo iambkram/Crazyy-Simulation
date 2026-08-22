@@ -34,7 +34,11 @@ def get_cached_text(font, text, color):
     return _text_cache[key]
 
 # Assets Folder Path
-ASSETS_DIR = "game_assets"
+import sys
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    ASSETS_DIR = os.path.join(sys._MEIPASS, "game_assets")
+else:
+    ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "game_assets")
 
 def load_img(name, size=None):
     path = os.path.join(ASSETS_DIR, name)

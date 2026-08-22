@@ -373,3 +373,52 @@ class VisualEffectsEngine:
             f_surf.fill((255, 255, 255, min(255, int(self.boss_flash_alpha))))
             screen.blit(f_surf, (0, 0))
             self.boss_flash_alpha = max(0.0, self.boss_flash_alpha - 10.0)
+
+def draw_neon_auth_bg(screen, now):
+    """Draws a next-level procedural synthwave/cyberpunk grid without images."""
+    import pygame, math
+    WIDTH, HEIGHT = screen.get_size()
+    # Deep Cyberpunk gradient
+    screen.fill((5, 5, 12))
+    
+    # Grid properties
+    grid_color = (0, 150, 255)
+    center_x = WIDTH // 2
+    center_y = int(HEIGHT * 0.4)
+    
+    # Draw sun/glow
+    pulse = (math.sin(now / 500.0) + 1) / 2
+    sun_radius = 120 + int(10 * pulse)
+    sun_color = (255, 50 + int(50*pulse), 150)
+    
+    # Outer glow
+    glow_surf = pygame.Surface((sun_radius*3, sun_radius*3), pygame.SRCALPHA)
+    pygame.draw.circle(glow_surf, (*sun_color, 20), (sun_radius*1.5, sun_radius*1.5), sun_radius*1.5)
+    pygame.draw.circle(glow_surf, (*sun_color, 40), (sun_radius*1.5, sun_radius*1.5), sun_radius*1.2)
+    pygame.draw.circle(glow_surf, (*sun_color, 150), (sun_radius*1.5, sun_radius*1.5), sun_radius)
+    screen.blit(glow_surf, (center_x - int(sun_radius*1.5), center_y - int(sun_radius*1.5)))
+    
+    # Cut the sun bottom with horizon
+    horizon_rect = pygame.Rect(0, center_y, WIDTH, HEIGHT - center_y)
+    pygame.draw.rect(screen, (5, 5, 15), horizon_rect)
+    
+    # Perspective grid lines (moving towards viewer)
+    speed = 0.05
+    offset = (now * speed) % 40
+    
+    # Horizontal lines
+    for i in range(15):
+        y = center_y + ((i * 40 + offset) ** 1.3) * 0.15
+        if y < HEIGHT:
+            line_thickness = 1 + int((y - center_y) / 100)
+            pygame.draw.line(screen, grid_color, (0, int(y)), (WIDTH, int(y)), line_thickness)
+            
+    # Vertical perspective lines
+    num_v_lines = 20
+    for i in range(-num_v_lines, num_v_lines):
+        x_bottom = center_x + i * 150
+        pygame.draw.line(screen, grid_color, (center_x, center_y), (x_bottom, HEIGHT), 1)
+        
+    # Draw glowing horizon line
+    pygame.draw.line(screen, (0, 255, 255), (0, center_y), (WIDTH, center_y), 4)
+    pygame.draw.line(screen, (255, 255, 255), (0, center_y), (WIDTH, center_y), 1)
