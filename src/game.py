@@ -702,6 +702,8 @@ def load_game():
         control_type = get_platform()["default_control_type"]
     if is_mobile():
         is_fullscreen = True
+
+def reset_level_logic(level=None):
     global current_level, player_health, player_rect, bullets, enemy_bullets
     global fighters, elites, heavies, phantoms, berserkers, commanders
     global achievements, particles
@@ -1175,12 +1177,6 @@ while running:
         # ---- BOTTOM CENTER: VERSION TAG ----
         draw_text("v1.0.0  |  @iambkram", FONT_TINY, (60, 90, 130), 400, 569)
 
-                elif is_h_ok:
-                    tap_snd.play()
-                    control_type = 'PC'
-                    show_settings_warning = False
-                    click_cooldown = 12
-                    m_c = False
     elif state == 6:
         res = render_store(
             screen, mx, my, m_c, key_escape, key_enter, tap_snd, ui_pulse_t, menu_bg,
