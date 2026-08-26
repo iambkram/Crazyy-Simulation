@@ -114,6 +114,12 @@ def do_install():
         src_ico=os.path.join(BUNDLE_DIR,"icon.ico")
         dst_ico=os.path.join(install_path,"icon.ico")
         if os.path.exists(src_ico): shutil.copy2(src_ico,dst_ico)
+        install_progress=0.35
+
+        install_logs.append(">> Copying configuration...")
+        src_env=os.path.join(BUNDLE_DIR,".env")
+        dst_env=os.path.join(install_path,".env")
+        if os.path.exists(src_env): shutil.copy2(src_env,dst_env)
         install_progress=0.40
 
         install_logs.append(">> Deploying game assets...")
@@ -133,7 +139,8 @@ def do_install():
         if not os.path.exists(sdst):
             with open(sdst,"w") as sf:
                 json.dump({"coins":0,"hp":200,"hp_step":0,"speed":7,"speed_step":0,
-                    "bullets":1,"bullet_step":0,"max_galaxy_level":1,"max_nebula_level":1,
+                    "bullets":1,"bullet_step":0,"firerate":1.0,"firerate_step":0,
+                    "max_galaxy_level":1,"max_nebula_level":1,
                     "max_blackhole_level":1,"env2_unlocked":False,"env3_unlocked":False,
                     "control_type":"PC","music_vol":0.5,"sfx_vol":0.7,
                     "show_fps":False,"visual_quality":"high","screen_shake":True,

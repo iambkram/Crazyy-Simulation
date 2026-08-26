@@ -1,3 +1,4 @@
+import webbrowser
 import ctypes
 try:
     myappid = 'iambkram.crazyysimulation.game.1'
@@ -65,7 +66,9 @@ def apply_display_mode(fullscreen):
 from assets import *
 from branding import CinematicBranding
 from menu_battle import MenuBattleSimulation
-from vfx import VisualEffectsEngine, draw_neon_auth_bg
+from vfx import (VisualEffectsEngine, draw_neon_auth_bg,
+                 draw_nebula_overlay, draw_blackhole_overlay, draw_neon_vignette)
+from ai.enemy_ai import run_enemy_ai, SpawnDirector, WaveComposer
 
 # ==========================================
 # MINIMAL BOOTSTRAP ASSETS (tiny, needed before loading screen)
@@ -312,8 +315,11 @@ loading_bgm      = _bgm_paths["loading"]
 game_bgm_main    = _bgm_paths["main"]
 game_bgm_fast    = _bgm_paths["fast"]
 
-bullet_img = pygame.Surface((6, 15))
-bullet_img.fill(BLUE)
+# Plasma bullet visuals are drawn procedurally via assets.draw_plasma_bullet()
+# No static bullet_img needed — bullets are rendered in the gameplay loop
+
+# SpawnDirector instance (initialized per-level in reset_level_logic)
+spawn_director = None
 
 del _load_results, _i, _bgm_paths, _tier
 
@@ -344,6 +350,7 @@ total_coins = 0
 unlocked_hp, hp_step = 200, 0
 unlocked_speed, speed_step = 7, 0
 unlocked_bullets, bullet_step = 1, 0
+unlocked_firerate, firerate_step = 1.0, 0
 max_galaxy_level = 1
 max_nebula_level = 1
 max_blackhole_level = 1
@@ -369,6 +376,14 @@ touch_start_y = 0
 touch_start_x = 0
 total_drag_dist = 0
 m_u = False
+mouse_pressed = False
+ignore_mouse_until_released = False
+PLAYER_MIN_Y_NORMAL = 200
+PLAYER_BOSS_MIN_Y = 380
+PLAYER_MIN_Y = PLAYER_MIN_Y_NORMAL
+PLAYER_MAX_Y = HEIGHT - 10
+PLAYER_MIN_X = 10
+PLAYER_MAX_X = WIDTH - 10
 settings_from_pause = False
 level_coins = 0
 warning_target = ""
@@ -416,6 +431,7 @@ next_spawn_time = random.randint(3000, 7000)
 last_spawn_tick = pygame.time.get_ticks()
 
 fighters, elites, heavies, bullets, enemy_bullets, achievements, particles, damage_numbers = [], [], [], [], [], [], [], []
+phantoms, berserkers, commanders = [], [], []   # New enemy types (Levels 31-40)
 current_boss_img = None
 
 skills = {
@@ -480,6 +496,8 @@ def save_game():
         "speed_step": speed_step,
         "bullets": unlocked_bullets,
         "bullet_step": bullet_step,
+        "firerate": unlocked_firerate,
+        "firerate_step": firerate_step,
         "max_galaxy_level": max_galaxy_level,
         "max_nebula_level": max_nebula_level,
         "max_blackhole_level": max_blackhole_level,
@@ -596,7 +614,7 @@ def get_revive_price(level, revives_done):
 def load_game():
     global music_vol, sfx_vol, tap_snd
     global total_coins, unlocked_hp, hp_step, unlocked_speed, speed_step
-    global unlocked_bullets, bullet_step, max_galaxy_level, max_nebula_level, max_blackhole_level, control_type
+    global unlocked_bullets, bullet_step, unlocked_firerate, firerate_step, max_galaxy_level, max_nebula_level, max_blackhole_level, control_type
     global env1_unlocked, env2_unlocked, env3_unlocked
     global show_fps, visual_quality, screen_shake_enabled, is_fullscreen
     global auto_fire_enabled, show_damage_enabled
@@ -620,6 +638,8 @@ def load_game():
                 speed_step = data.get("speed_step", 0)
                 unlocked_bullets = data.get("bullets", 1)
                 bullet_step = data.get("bullet_step", 0)
+                unlocked_firerate = data.get("firerate", 1.0)
+                firerate_step = data.get("firerate_step", 0)
                 max_galaxy_level = max(1, min(40, data.get("max_galaxy_level", 1)))
                 max_nebula_level = max(1, min(40, data.get("max_nebula_level", 1)))
                 max_blackhole_level = max(1, min(40, data.get("max_blackhole_level", 1)))
@@ -656,12 +676,13 @@ def load_game():
 
 def reset_level_logic(level):
     global current_level, player_health, player_rect, bullets, enemy_bullets
-    global fighters, elites, heavies, achievements, particles
+    global fighters, elites, heavies, phantoms, berserkers, commanders
+    global achievements, particles
     global boss_hp, boss_max_hp, boss_death_timer, current_level, boss_rect, kill_count
     global boss_active, boss_arriving, boss_target_x, current_boss_img
     global boss_warning_timer, boss_defeated_timer
     global blackhole_alert_active, revive_protection_timer
-    global galaxy_bg_y
+    global galaxy_bg_y, spawn_director
 
     galaxy_bg_y = 0.0
 
@@ -676,10 +697,17 @@ def reset_level_logic(level):
     fighters.clear()
     elites.clear()
     heavies.clear()
+    phantoms.clear()
+    berserkers.clear()
+    commanders.clear()
     achievements.clear()
     particles.clear()
     damage_numbers.clear()
     vfx_engine.reset_boss_effects()
+    vfx_engine.clear_all()
+
+    # (Re)initialize the adaptive SpawnDirector for this level
+    spawn_director = SpawnDirector(current_level, env=current_selected_env)
 
     # Reset Black Hole alert popup for sector 3
     blackhole_alert_active = (current_selected_env == 3)
@@ -706,13 +734,15 @@ def reset_level_logic(level):
     boss_spiral_t    = 0.0
     boss_dive_target = (WIDTH // 2, HEIGHT // 2)
 
-    # Boss HP scaling tiered by campaign difficulty
+    # Boss HP scaling — now uses environment-aware difficulty
+    # Nebula starts harder than Galaxy; Blackhole starts harder than Nebula
+    env_mult = {1: 1.0, 2: 1.35, 3: 1.75}.get(current_selected_env, 1.0)
     if current_level <= 10:
-        boss_max_hp = 120 + (current_level * 20)  # Lvl 1: 140 HP, Lvl 10: 320 HP
-    elif current_level <= 30:
-        boss_max_hp = 320 + ((current_level - 10) * 35)  # Lvl 11: 355 HP, Lvl 30: 1020 HP
+        boss_max_hp = int((200 + (current_level - 1) * 65) * env_mult)
+    elif current_level <= 25:
+        boss_max_hp = int((850 + (current_level - 10) * 175) * env_mult)
     else:
-        boss_max_hp = 1050 + ((current_level - 30) * 60)  # Lvl 31: 1110 HP, Lvl 40: 1650 HP
+        boss_max_hp = int((3600 + (current_level - 25) * 290) * env_mult)
     boss_hp = boss_max_hp
 
     # Tier calculation based on level (1-40)
@@ -721,6 +751,7 @@ def reset_level_logic(level):
     boss_rect = current_boss_img.get_rect(center=(WIDTH // 2, -150))
 
     for s in skills: skills[s]['active'] = False
+
 
 def update_coins(amount):
     global total_coins, level_coins
@@ -745,6 +776,7 @@ def check_enemy_spawn(new_rect, all_enemies):
 load_game()
 
 # Cloud sync setup
+cloud_sync.set_app_dir(app_dir)
 cloud_sync.load_local_session()
 cloud_sync.start_sync_thread(SAVE_FILE)
 
@@ -765,11 +797,13 @@ while running:
     last_frame_ticks = current_frame_ticks
 
     screen.fill(BLACK)
+    prev_state = state
     now = pygame.time.get_ticks()
     m_p = pygame.mouse.get_pos()
     m_c = False
     mx, my = pygame.mouse.get_pos()
     m_down = pygame.mouse.get_pressed()[0]
+    mouse_pressed = m_down
     
     if cloud_sync.save_updated_from_cloud:
         cloud_sync.save_updated_from_cloud = False
@@ -822,6 +856,8 @@ while running:
 
     if click_cooldown > 0:
         click_cooldown -= 1
+        if mouse_pressed:
+            ignore_mouse_until_released = True
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
@@ -830,10 +866,13 @@ while running:
                 mouse_pressed = True
                 if click_cooldown <= 0:
                     m_c = True
+                    ignore_mouse_until_released = False
         if event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
                 mouse_pressed = False
-                m_u = True
+                if not ignore_mouse_until_released and click_cooldown <= 0:
+                    m_u = True
+                ignore_mouse_until_released = False
         if event.type == pygame.MOUSEWHEEL:
             m_wheel = event.y
         if event.type == pygame.MOUSEMOTION:
@@ -939,61 +978,54 @@ while running:
         mx, my = pygame.mouse.get_pos()
         m_down = pygame.mouse.get_pressed()[0]
 
-        # ---- TITLE ----
-        title_glow = FONT_TITLE.render("CRAZYY SIMULATION", True, NEON_CYAN)
-        glow_surf = pygame.Surface(title_glow.get_size(), pygame.SRCALPHA)
-        glow_surf.blit(title_glow, (0, 0))
-        glow_surf.set_alpha(int(60 + 30 * math.sin(ui_pulse_t * 2)))
-        screen.blit(glow_surf, title_glow.get_rect(center=(401, 86)))
-        draw_text_shadow("CRAZYY SIMULATION", FONT_TITLE, NEON_CYAN, 400, 84, shadow_color=(0, 80, 120), offset=3)
-        draw_text("GALAXY WARFARE  ·  SURVIVAL EDITION", FONT_TINY, (80, 130, 180), 400, 120)
+        # ---- Subtle neon edge vignette over the battle bg ----
+        draw_neon_vignette(screen, color=(0, 10, 30), alpha_edge=90, steps=5)
+
+        # ---- TITLE BLOCK ----
+        # Primary glowing title
+        title_glow_a = int(80 + 40 * math.sin(ui_pulse_t * 1.8))
+        for goff, ga in [(5, title_glow_a // 4), (3, title_glow_a // 2), (1, title_glow_a)]:
+            ts = FONT_TITLE.render("CRAZYY SIMULATION", True, NEON_CYAN)
+            ts.set_alpha(ga)
+            screen.blit(ts, ts.get_rect(center=(400 + goff, 70)))
+        draw_text_shadow("CRAZYY SIMULATION", FONT_TITLE, NEON_CYAN, 400, 70, shadow_color=(0, 60, 100), offset=3)
+
+        # COSMIC CIVIL WAR subtitle — glitch flicker effect
+        ccw_alpha = int(180 + 60 * math.sin(ui_pulse_t * 3.1))
+        ccw_col = (min(255, ccw_alpha), min(255, int(210 * ccw_alpha / 240)), 50)
+        ccw_surf = FONT_MODAL_SUB.render("[ COSMIC CIVIL WAR ]", True, ccw_col)
+        # Occasional glitch offset
+        glitch_ox = int(random.choice([0, 0, 0, 2, -2]) if random.random() < 0.08 else 0)
+        screen.blit(ccw_surf, ccw_surf.get_rect(center=(400 + glitch_ox, 108)))
+
+        # Thin horizontal neon divider beneath title
+        div_surf = pygame.Surface((300, 1), pygame.SRCALPHA)
+        div_surf.fill((*NEON_CYAN, 80))
+        screen.blit(div_surf, (250, 128))
 
         # ---- COIN BADGE (top center) ----
-        coin_panel = pygame.Rect(318, 138, 164, 36)
-        pygame.draw.rect(screen, (14, 16, 28), coin_panel, border_radius=18)
-        pygame.draw.rect(screen, NEON_GOLD, coin_panel, width=1, border_radius=18)
-        screen.blit(coin_icon, (326, 130))
-        draw_text(str(total_coins), FONT_UI, NEON_GOLD, 395, 156)
+        coin_panel = pygame.Rect(320, 124, 160, 32)
+        pygame.draw.rect(screen, (14, 16, 28), coin_panel, border_radius=16)
+        pygame.draw.rect(screen, NEON_GOLD, coin_panel, width=1, border_radius=16)
+        screen.blit(coin_icon, (328, 117))
+        draw_text(str(total_coins), FONT_UI, NEON_GOLD, 395, 140)
 
-        # ---- PROFILE / LOGOUT (top right) ----
+        # ---- TOP RIGHT PROFILE BADGE ----
         profile_name = cloud_sync.current_username or "Guest"
         if len(profile_name) > 12:
             profile_name = profile_name[:10] + ".."
-        draw_text(f"👤 {profile_name}", FONT_TINY, WHITE, 680, 25)
-        
-        btn_quick_logout = pygame.Rect(640, 45, 80, 24)
-        is_h_q_logout = btn_quick_logout.collidepoint(mx, my)
-        pygame.draw.rect(screen, RED if is_h_q_logout else (100, 30, 30), btn_quick_logout, border_radius=8)
-        draw_text("LOGOUT", FONT_TINY, WHITE, btn_quick_logout.centerx, btn_quick_logout.centery)
-        
-        if m_c and is_h_q_logout:
-            tap_snd.play()
-            cloud_sync.clear_local_session()
-            total_coins = 0
-            max_galaxy_level = 1
-            max_nebula_level = 1
-            max_blackhole_level = 1
-            unlocked_hp = 5
-            unlocked_speed = 5
-            unlocked_bullets = 1
-            bullet_step = 0
-            current_selected_env = 1
-            total_coins = 0
-
-            max_galaxy_level = 1
-            max_nebula_level = 1
-            max_blackhole_level = 1
-            state = -3
-            click_cooldown = 12
-            m_c = False
+        prof_rect = pygame.Rect(645, 12, 140, 26)
+        pygame.draw.rect(screen, (14, 18, 30), prof_rect, border_radius=13)
+        pygame.draw.rect(screen, (40, 60, 90), prof_rect, width=1, border_radius=13)
+        draw_text(f" {profile_name}", FONT_TINY, NEON_CYAN, prof_rect.centerx, prof_rect.centery)
 
         # ---- MENU BUTTONS ----
         menu_btns = [
-            ("🎮  CAMPAIGN",    NEON_BLUE,      200, 20),
-            ("🌐  MULTIPLAYER", MID_GRAY,       272, "locked"),
-            ("🛒  STORE",       (140, 40, 200), 344, 6),
-            ("⚙   SETTINGS",   NEON_ORANGE,    416, 9),
-            ("✕  QUIT",        NEON_PINK,      488, 0),
+            (">  CAMPAIGN",    NEON_BLUE,      172, 20),
+            (">  MULTIPLAYER", MID_GRAY,       234, "locked"),
+            (">  STORE",       (140, 40, 200), 296, 6),
+            (">   SETTINGS",   NEON_ORANGE,    358, 9),
+            ("X  QUIT",        NEON_PINK,      420, 0),
         ]
 
         # Keyboard navigation for menu
@@ -1005,25 +1037,25 @@ while running:
             running = False
 
         for idx, (txt, col, y, target) in enumerate(menu_btns):
-            btn_rect = pygame.Rect(250, y, 300, 62)
+            btn_rect = pygame.Rect(250, y, 300, 50)
             is_hover = btn_rect.collidepoint(mx, my)
             is_focused = (idx == focused_btn)
             if is_hover and target != "locked":
                 focused_btn = idx  # Mouse overrides keyboard focus
             
             draw_glowing_button(screen, txt, FONT_UI, WHITE if target != "locked" else LIGHT_GRAY, btn_rect, col, (is_hover or is_focused) and target != "locked",
-                                border_radius=16, accent=NEON_CYAN, pulse_t=ui_pulse_t)
+                                border_radius=14, accent=NEON_CYAN, pulse_t=ui_pulse_t)
             
             if target == "locked":
                 # Draw COMING SOON badge
-                badge_rect = pygame.Rect(btn_rect.right - 95, btn_rect.y - 10, 100, 24)
-                pygame.draw.rect(screen, RED, badge_rect, border_radius=12)
+                badge_rect = pygame.Rect(btn_rect.right - 92, btn_rect.y - 8, 96, 22)
+                pygame.draw.rect(screen, RED, badge_rect, border_radius=11)
                 draw_text("COMING v2.0", FONT_TINY, WHITE, badge_rect.centerx, badge_rect.centery)
 
             # Keyboard focus indicator
             if is_focused and not is_hover and target != "locked":
                 focus_surf = pygame.Surface((btn_rect.width + 8, btn_rect.height + 8), pygame.SRCALPHA)
-                pygame.draw.rect(focus_surf, (*NEON_CYAN, 90), focus_surf.get_rect(), border_radius=18, width=2)
+                pygame.draw.rect(focus_surf, (*NEON_CYAN, 90), focus_surf.get_rect(), border_radius=16, width=2)
                 screen.blit(focus_surf, (btn_rect.x - 4, btn_rect.y - 4))
 
             activated = (m_c and is_hover) or (key_enter and is_focused)
@@ -1039,12 +1071,49 @@ while running:
                     m_c = False
                 else:
                     tap_snd.play()
+                    if target == 9:
+                        settings_from_pause = False
                     state = target
                     click_cooldown = 12
                     m_c = False
 
-        # ---- VERSION TAG ----
-        draw_text("v1.0.0  |  @iambkram", FONT_TINY, (50, 70, 100), 400, 583)
+        # ---- BOTTOM LEFT: LOGOUT BUTTON (Clean & Small) ----
+        btn_quick_logout = pygame.Rect(18, 554, 115, 30)
+        is_h_q_logout = btn_quick_logout.collidepoint(mx, my)
+        draw_glowing_button(screen, "ESC LOGOUT", FONT_TINY, WHITE, btn_quick_logout, RED, is_h_q_logout, border_radius=10, pulse_t=0)
+        
+        if m_c and is_h_q_logout:
+            tap_snd.play()
+            cloud_sync.clear_local_session()
+            total_coins = 0
+            max_galaxy_level = 1
+            max_nebula_level = 1
+            max_blackhole_level = 1
+            unlocked_hp = 200
+            unlocked_speed = 7
+            unlocked_bullets = 1
+            bullet_step = 0
+            current_selected_env = 1
+            state = -3
+            click_cooldown = 12
+            m_c = False
+
+        # ---- BOTTOM RIGHT: REPORT ISSUES BUTTON (Direct to GitHub) ----
+        btn_report_issues = pygame.Rect(642, 554, 140, 30)
+        is_h_report = btn_report_issues.collidepoint(mx, my)
+        draw_glowing_button(screen, "🐛 REPORT ISSUES", FONT_TINY, WHITE, btn_report_issues, NEON_CYAN, is_h_report, border_radius=10, pulse_t=ui_pulse_t)
+
+        if m_c and is_h_report:
+            tap_snd.play()
+            try:
+                webbrowser.open("https://github.com/iambkram/Crazyy-Simulation/issues")
+            except Exception as e:
+                print("Error opening issues page:", e)
+            click_cooldown = 12
+            m_c = False
+
+        # ---- BOTTOM CENTER: VERSION TAG ----
+        draw_text("v1.0.0  |  @iambkram", FONT_TINY, (60, 90, 130), 400, 569)
 
         # ---- CONTROL CONFIGURATION WARNING POPUP ----
         if show_settings_warning:
@@ -1055,7 +1124,7 @@ while running:
             warn_rect = pygame.Rect(130, 160, 540, 280)
             draw_neon_panel(screen, warn_rect, accent=NEON_CYAN, alpha=248, border_radius=20)
 
-            draw_text("⚙  CONTROL SETUP", FONT_MODAL_TITLE, NEON_CYAN, 400, 210)
+            draw_text(">  CONTROL SETUP", FONT_MODAL_TITLE, NEON_CYAN, 400, 210)
             draw_divider(screen, 170, 235, 630, NEON_CYAN, alpha=50)
             draw_text("Choose your control scheme in Settings.", FONT_SMALL, WHITE, 400, 265)
             draw_text("Defaulting to PC: WASD + Space auto-fire", FONT_SMALL, NEON_GOLD, 400, 293)
@@ -1084,35 +1153,48 @@ while running:
     elif state == 6:
         res = render_store(
             screen, mx, my, m_c, key_escape, key_enter, tap_snd, ui_pulse_t, menu_bg,
-            coin_icon, total_coins, hp_step, speed_step, bullet_step,
-            hp_costs, speed_costs, bullet_costs, store_selection,
-            unlocked_hp, unlocked_speed, unlocked_bullets
+            coin_icon, total_coins, hp_step, speed_step, bullet_step, firerate_step,
+            hp_costs, speed_costs, bullet_costs, firerate_costs, store_selection,
+            unlocked_hp, unlocked_speed, unlocked_bullets, unlocked_firerate
         )
         state, store_selection, click_cooldown, m_c, key_escape, key_enter = res
 
     elif state == 7:
         res = render_store_confirm(
             screen, mx, my, m_c, key_escape, key_enter, tap_snd, tap_snd, ui_pulse_t, total_coins,
-            store_selection, hp_step, speed_step, bullet_step,
-            hp_costs, speed_costs, bullet_costs
+            store_selection, hp_step, speed_step, bullet_step, firerate_step,
+            hp_costs, speed_costs, bullet_costs, firerate_costs
         )
         state, action_dict, click_cooldown, m_c, key_escape, key_enter = res
         
         if action_dict and action_dict.get('type') == 'buy':
+            item = action_dict.get('item', store_selection)
+            is_max = False
+            if item in (0, 'hp') and hp_step >= len(hp_costs):
+                is_max = True
+            elif item in (1, 'sp') and speed_step >= len(speed_costs):
+                is_max = True
+            elif item in (2, 'pb', 'bullets') and bullet_step >= len(bullet_costs):
+                is_max = True
+            elif item in (3, 'fr', 'firerate', 'overclock') and firerate_step >= len(firerate_costs):
+                is_max = True
+                
             cost = action_dict.get('cost', 0)
-            if cost > 0 and total_coins >= cost:
+            if not is_max and cost > 0 and total_coins >= cost:
                 total_coins -= cost
                 tap_snd.play()
-                item = action_dict.get('item', store_selection)
                 if item in (0, 'hp'):
-                    hp_step = min(hp_step + 1, len(hp_costs) - 1)
+                    hp_step += 1
                     unlocked_hp += 50
                 elif item in (1, 'sp'):
-                    speed_step = min(speed_step + 1, len(speed_costs) - 1)
+                    speed_step += 1
                     unlocked_speed += 1
                 elif item in (2, 'pb', 'bullets'):
-                    bullet_step = min(bullet_step + 1, len(bullet_costs) - 1)
+                    bullet_step += 1
                     unlocked_bullets += 1
+                elif item in (3, 'fr', 'firerate', 'overclock'):
+                    firerate_step += 1
+                    unlocked_firerate = round(1.0 + firerate_step * 0.15, 2)
                 save_game()
 
     elif state == 8:
@@ -1163,10 +1245,10 @@ while running:
         draw_divider(screen, 120, 138, 680, NEON_CYAN, alpha=40)
 
         instructions = [
-            ("🕹  Flight Navigation",  "Use [W A S D] or Arrow Keys for 2D maneuvering & dodging."),
-            ("🔫  Weapons Barrage",    "Hold [SPACEBAR] or Left Mouse Button for rapid auto-fire."),
-            ("⚡  Tactical Powerups",  "Collect glowing [S] Shield & [2X] Dual Laser orbs mid-flight."),
-            ("⚫  Singularity Hazard", "In Black Hole mode, resist gravity with fast thruster bursts!"),
+            ("+  Flight Navigation",  "Use [W A S D] or Arrow Keys for 2D maneuvering & dodging."),
+            ("-  Weapons Barrage",    "Hold [SPACEBAR] or Left Mouse Button for rapid auto-fire."),
+            ("+  Tactical Powerups",  "Collect glowing [S] Shield & [2X] Dual Laser orbs mid-flight."),
+            ("O  Singularity Hazard", "In Black Hole mode, resist gravity with fast thruster bursts!"),
         ]
 
         for idx, (head, body) in enumerate(instructions):
@@ -1183,7 +1265,7 @@ while running:
         m_down = pygame.mouse.get_pressed()[0]
         btn_ok = pygame.Rect(270, 450, 260, 54)
         is_h_ok = btn_ok.collidepoint(mx, my)
-        draw_glowing_button(screen, "✔  GOT IT!", FONT_UI, WHITE, btn_ok, NEON_GREEN, is_h_ok,
+        draw_glowing_button(screen, "OK  GOT IT!", FONT_UI, WHITE, btn_ok, NEON_GREEN, is_h_ok,
                             border_radius=16, accent=GREEN, pulse_t=ui_pulse_t)
 
         if m_c and is_h_ok:
@@ -1209,10 +1291,10 @@ while running:
         draw_divider(screen, 120, 138, 680, NEON_CYAN, alpha=40)
 
         m_instructions = [
-            ("👆  Touch Navigation",    "Slide your finger anywhere to smoothly glide your starship."),
-            ("🔫  Auto-Firing",         "Cannons fire automatically while your finger is on the screen."),
-            ("⚡  Tactical Powerups",   "Tap glowing [S] Shield & [2X] Double Shot orbs to collect them."),
-            ("⚫  Singularity Hazard",  "Always keep sliding — Black Hole pulls you continuously inward!"),
+            ("^  Touch Navigation",    "Slide your finger anywhere to smoothly glide your starship."),
+            ("-  Auto-Firing",         "Cannons fire automatically while your finger is on the screen."),
+            ("+  Tactical Powerups",   "Tap glowing [S] Shield & [2X] Double Shot orbs to collect them."),
+            ("O  Singularity Hazard",  "Always keep sliding — Black Hole pulls you continuously inward!"),
         ]
 
         for idx, (head, body) in enumerate(m_instructions):
@@ -1228,7 +1310,7 @@ while running:
         m_down = pygame.mouse.get_pressed()[0]
         btn_ok = pygame.Rect(270, 450, 260, 54)
         is_h_ok = btn_ok.collidepoint(mx, my)
-        draw_glowing_button(screen, "✔  GOT IT!", FONT_UI, WHITE, btn_ok, NEON_GREEN, is_h_ok,
+        draw_glowing_button(screen, "OK  GOT IT!", FONT_UI, WHITE, btn_ok, NEON_GREEN, is_h_ok,
                             border_radius=16, accent=GREEN, pulse_t=ui_pulse_t)
 
         if m_c and is_h_ok:
@@ -1265,58 +1347,68 @@ while running:
         env_names = {1: "GALAXY SECTOR", 2: "NEBULA ZONE", 3: "BLACKHOLE HORIZON"}
         curr_env_title = env_names.get(current_selected_env, "GALAXY SECTOR")
 
-        box_rect = pygame.Rect(130, 78, 540, 444)
-        draw_neon_panel(screen, box_rect, accent=env_acc2, alpha=250, border_radius=20, bg=PANEL_BG)
+        box_rect = pygame.Rect(120, 68, 560, 464)
+        draw_holographic_panel(screen, box_rect, accent=env_acc2, alpha=250, border_radius=22,
+                               bg=PANEL_BG, show_scanlines=True, show_corners=True, pulse_t=ui_pulse_t)
 
-        draw_text_shadow(f"MISSION  {selected_level}", FONT_MODAL_TITLE, NEON_GOLD, 400, 126, shadow_color=(80,50,0), offset=2)
-        draw_badge(screen, curr_env_title, FONT_TINY, 400, 160, bg_color=PANEL_MID, text_color=env_acc2, border_color=env_acc2)
-        draw_divider(screen, 165, 182, 635, env_acc2, alpha=50)
+        draw_text_shadow(f"MISSION  {selected_level}", FONT_MODAL_TITLE, NEON_GOLD, 400, 116, shadow_color=(80, 50, 0), offset=2)
+        draw_badge(screen, curr_env_title, FONT_TINY, 400, 150, bg_color=PANEL_MID, text_color=env_acc2, border_color=env_acc2)
+        draw_divider(screen, 155, 172, 645, env_acc2, alpha=50)
 
         boss_kill_reqs = {1: 15, 2: 20, 3: 25, 4: 35, 5: 45, 6: 60, 7: 75, 8: 90, 9: 105, 10: 120}
         req_k = min(200, 120 + (selected_level - 10) * 4) if selected_level >= 11 else boss_kill_reqs.get(selected_level, 25)
 
         # Objective card
-        obj_rect = pygame.Rect(160, 200, 480, 72)
+        obj_rect = pygame.Rect(150, 188, 500, 72)
         pygame.draw.rect(screen, PANEL_MID, obj_rect, border_radius=12)
         pygame.draw.rect(screen, env_acc2, obj_rect, width=1, border_radius=12)
-        pygame.draw.rect(screen, env_acc2, pygame.Rect(160, 210, 3, 52), border_radius=2)
-        draw_text("⚔  OBJECTIVE", FONT_SMALL, NEON_GOLD, 400, 222)
-        draw_text(f"Eliminate {req_k} enemies to summon the Sector Boss", FONT_SMALL, WHITE, 400, 250)
+        pygame.draw.rect(screen, env_acc2, pygame.Rect(150, 198, 3, 52), border_radius=2)
+        draw_text("VS  TACTICAL OBJECTIVE", FONT_SMALL, NEON_GOLD, 400, 210)
+        draw_text(f"Eliminate {req_k} hostiles to draw out the Sector Boss", FONT_SMALL, WHITE, 400, 238)
 
         # Tier / difficulty badge
         tier = (selected_level - 1) // 5 + 1
         diff_labels = {1:"NOVICE", 2:"RECRUIT", 3:"VETERAN", 4:"ELITE", 5:"COMMANDER", 6:"OVERLORD", 7:"LEGEND", 8:"MYTHIC"}
         diff_txt = diff_labels.get(tier, "MYTHIC")
         diff_col = [NEON_GREEN, NEON_BLUE, NEON_CYAN, NEON_ORANGE, NEON_PINK, RED, NEON_PURPLE, NEON_GOLD][min(tier-1, 7)]
-        draw_badge(screen, f"DIFFICULTY: {diff_txt}", FONT_TINY, 400, 308, bg_color=PANEL_MID, text_color=diff_col, border_color=diff_col)
+        draw_badge(screen, f"THREAT LEVEL: {diff_txt}", FONT_TINY, 400, 292, bg_color=PANEL_MID, text_color=diff_col, border_color=diff_col)
 
-        # Enemy type preview
-        preview_y = 352
-        draw_text("ENEMY ROSTER", FONT_TINY, LIGHT_GRAY, 400, preview_y - 16)
+        # Dynamic enemy type roster preview
+        preview_y = 338
+        draw_text("INTEL: DETECTED ENEMY ROSTER", FONT_TINY, LIGHT_GRAY, 400, preview_y - 14)
         enemy_info = [
             (fighter_img, "Fighter",  NEON_CYAN),
             (elite_img,   "Elite",    NEON_PURPLE),
             (heavy_img,   "Heavy",    NEON_ORANGE),
         ]
-        ex = 260
-        for eimg, ename, ecol in enemy_info:
-            esc = pygame.transform.scale(eimg, (36, 36))
-            screen.blit(esc, (ex, preview_y))
-            draw_text(ename, FONT_TINY, ecol, ex + 18, preview_y + 50)
-            ex += 100
+        if selected_level >= 31:
+            enemy_info.append((fighter_img, "Phantom", NEON_VIOLET))
+        if selected_level >= 35:
+            enemy_info.append((heavy_img, "Berserker", NEON_SCARLET))
+        if selected_level >= 38:
+            enemy_info.append((heavy_img, "Commander", NEON_GOLD))
+
+        num_roster = len(enemy_info)
+        spacing_r = min(80, 480 // max(1, num_roster))
+        start_rx = 400 - ((num_roster - 1) * spacing_r) // 2
+        for r_idx, (eimg, ename, ecol) in enumerate(enemy_info):
+            rx = start_rx + r_idx * spacing_r
+            esc = pygame.transform.scale(eimg, (32, 32))
+            screen.blit(esc, (rx - 16, preview_y))
+            draw_text(ename, FONT_TINY, ecol, rx, preview_y + 44)
 
         mx, my = pygame.mouse.get_pos()
         m_down = pygame.mouse.get_pressed()[0]
-        b_r = pygame.Rect(155, 432, 220, 58)
-        b_a = pygame.Rect(425, 432, 220, 58)
+        b_r = pygame.Rect(145, 442, 230, 56)
+        b_a = pygame.Rect(425, 442, 230, 56)
         is_h_r = b_r.collidepoint(mx, my)
         is_h_a = b_a.collidepoint(mx, my)
 
-        # Launch button with animated border sweep
-        draw_glowing_button(screen, "🚀  LAUNCH", FONT_UI, WHITE, b_r, NEON_GREEN, is_h_r,
-                            border_radius=16, accent=GREEN, pulse_t=ui_pulse_t)
-        draw_glowing_button(screen, "← BACK", FONT_UI, WHITE, b_a, NEON_PINK, is_h_a,
-                            border_radius=16, accent=RED, pulse_t=ui_pulse_t)
+        # Launch & Back buttons with plasma styling
+        draw_plasma_button(screen, ">>>  LAUNCH", FONT_UI, WHITE, b_r, (0, 150, 60), is_h_r,
+                           border_radius=16, accent=NEON_GREEN, pulse_t=ui_pulse_t)
+        draw_plasma_button(screen, "< BACK", FONT_UI, WHITE, b_a, (140, 20, 50), is_h_a,
+                           border_radius=16, accent=NEON_PINK, pulse_t=ui_pulse_t)
 
         if m_c or key_enter or key_escape:
             if is_h_r or key_enter:
@@ -1359,15 +1451,15 @@ while running:
             alert_box = pygame.Rect(90, 80, 620, 480)
             draw_neon_panel(screen, alert_box, accent=NEON_PINK, alpha=250, border_radius=22, bg=(25,12,18))
 
-            draw_text_shadow("⚠ GRAVITATIONAL HAZARD", FONT_MODAL_TITLE, NEON_PINK, 400, 115, shadow_color=(80,0,0), offset=2)
+            draw_text_shadow("! GRAVITATIONAL HAZARD", FONT_MODAL_TITLE, NEON_PINK, 400, 115, shadow_color=(80,0,0), offset=2)
             draw_text("BLACK HOLE SINGULARITY DETECTED", FONT_TINY, NEON_CYAN, 400, 150)
             draw_divider(screen, 130, 168, 670, NEON_PINK, alpha=50)
 
             warnings = [
-                ("⚫ Massive Singularity", "Extreme gravity pulls all ships and matter to the center!"),
+                ("O Massive Singularity", "Extreme gravity pulls all ships and matter to the center!"),
                 ("⏳ Relativistic Time",    "All ship navigation, lasers, and combat speeds are slowed down."),
                 ("💥 Event Horizon",        "Falling into the center will crush your starship!"),
-                ("🚀 Active Defense",       "Use continuous sliding / WASD reflexes to resist gravity.")
+                (">>> Active Defense",       "Use continuous sliding / WASD reflexes to resist gravity.")
             ]
 
             for idx, (head, body) in enumerate(warnings):
@@ -1380,7 +1472,7 @@ while running:
 
             btn_engage = pygame.Rect(250, 465, 300, 56)
             is_h_eng = btn_engage.collidepoint(mx, my)
-            draw_glowing_button(screen, "🚀 ENGAGE THRUSTERS", FONT_UI, WHITE, btn_engage, NEON_PINK, is_h_eng, accent=RED, pulse_t=ui_pulse_t)
+            draw_glowing_button(screen, ">>> ENGAGE THRUSTERS", FONT_UI, WHITE, btn_engage, NEON_PINK, is_h_eng, accent=RED, pulse_t=ui_pulse_t)
 
             if m_c and is_h_eng:
                 tap_snd.play()
@@ -1409,6 +1501,9 @@ while running:
         mouse_dy = my - prev_my
         prev_mx, prev_my = mx, my
 
+        # Determine dynamic flight boundary (unrestricted during waves, restricted during boss encounter)
+        current_player_min_y = PLAYER_BOSS_MIN_Y if (boss_active or boss_arriving) else PLAYER_MIN_Y_NORMAL
+
         # --- SMART CONTROLS LOGIC ---
         if fire_cooldown > 0:
             fire_cooldown -= 1
@@ -1416,18 +1511,20 @@ while running:
         is_firing = False
 
         if control_type == 'PC':
-            if (keys[pygame.K_a] or keys[pygame.K_LEFT]) and player_rect.left > 0:
+            if (keys[pygame.K_a] or keys[pygame.K_LEFT]) and player_rect.left > PLAYER_MIN_X:
                 player_rect.x -= eff_player_speed
-            if (keys[pygame.K_d] or keys[pygame.K_RIGHT]) and player_rect.right < WIDTH:
+            if (keys[pygame.K_d] or keys[pygame.K_RIGHT]) and player_rect.right < PLAYER_MAX_X:
                 player_rect.x += eff_player_speed
-            if (keys[pygame.K_w] or keys[pygame.K_UP]) and player_rect.top > 80:
+            if (keys[pygame.K_w] or keys[pygame.K_UP]) and player_rect.top > current_player_min_y:
                 player_rect.y -= eff_player_speed
-            if (keys[pygame.K_s] or keys[pygame.K_DOWN]) and player_rect.bottom < HEIGHT - 10:
+            if (keys[pygame.K_s] or keys[pygame.K_DOWN]) and player_rect.bottom < PLAYER_MAX_Y:
                 player_rect.y += eff_player_speed
 
+            # Base cooldown governed purely by Store Overclock upgrade (no free level 15 boost)
+            player_base_cd = max(6, 11 - firerate_step + (1 if is_blackhole else 0))
             if (keys[pygame.K_SPACE] or (mouse_pressed and not is_h_pause) or auto_fire_enabled) and fire_cooldown <= 0:
                 is_firing = True
-                fire_cooldown = 9 if is_blackhole else (8 if current_level <= 15 else 6)
+                fire_cooldown = player_base_cd
 
         elif control_type == 'MOBILE':
             if mouse_pressed and not is_h_pause:
@@ -1439,15 +1536,16 @@ while running:
                         player_rect.x += int((mouse_dx / dist) * step)
                         player_rect.y += int((mouse_dy / dist) * step)
 
+            player_base_cd = max(5, 10 - firerate_step + (1 if is_blackhole else 0))
             if (mouse_pressed and not is_h_pause or auto_fire_enabled) and fire_cooldown <= 0:
                 is_firing = True
-                fire_cooldown = 8 if is_blackhole else (7 if current_level <= 15 else 5)
+                fire_cooldown = player_base_cd
 
-        # Keep player ship within screen boundaries
-        player_rect.left = max(0, player_rect.left)
-        player_rect.right = min(WIDTH, player_rect.right)
-        player_rect.top = max(80, player_rect.top)
-        player_rect.bottom = min(HEIGHT - 10, player_rect.bottom)
+        # Keep player ship strictly within active flight zone
+        player_rect.left = max(PLAYER_MIN_X, player_rect.left)
+        player_rect.right = min(PLAYER_MAX_X, player_rect.right)
+        player_rect.top = max(current_player_min_y, player_rect.top)
+        player_rect.bottom = min(PLAYER_MAX_Y, player_rect.bottom)
 
         # ----------------------------------------------------
         # BLACKHOLE GRAVITATIONAL PULL ON PLAYER & SHRINK
@@ -1533,6 +1631,27 @@ while running:
                     s[1] = 0
                     s[0] = random.randint(0, WIDTH)
 
+        # ----------------------------------------------------
+        # IMMERSIVE ENVIRONMENT OVERLAYS (drawn after bg + stars)
+        # ----------------------------------------------------
+        if visual_quality != 'low':
+            if is_nebula:
+                draw_nebula_overlay(screen, ui_pulse_t)
+            elif is_blackhole:
+                draw_blackhole_overlay(screen, ui_pulse_t, bh_cx=BH_X, bh_cy=BH_Y)
+
+        # Draw Player Flight Zone Defense Boundary Line (Only active when boss is arriving or in combat)
+        if boss_arriving or boss_active:
+            boundary_alpha = int(100 + 40 * math.sin(ui_pulse_t * 3.0))
+            is_boss_fight = boss_active and boss_death_timer == 0
+            barrier_color = NEON_CYAN if is_boss_fight else RED
+            draw_divider(screen, 20, PLAYER_BOSS_MIN_Y, WIDTH - 20, barrier_color, alpha=boundary_alpha)
+            
+            # Subtle barrier shield glow strip
+            barrier_surf = pygame.Surface((WIDTH - 40, 4), pygame.SRCALPHA)
+            barrier_surf.fill((*barrier_color, min(140, boundary_alpha)))
+            screen.blit(barrier_surf, (20, PLAYER_BOSS_MIN_Y - 2))
+
         # Asteroids Update & Collision
         asteroid_group.update()
         asteroid_group.draw(screen)
@@ -1542,6 +1661,7 @@ while running:
                 if not skills['immortal']['active'] and revive_protection_timer <= 0:
                     player_health -= 30
                     player_dmg_anim = 15
+                    global_shake_intensity = 8.0
                     hit_snd.play()
                 ast.kill()
                 for _ in range(12):
@@ -1549,7 +1669,7 @@ while running:
 
         current_tick = pygame.time.get_ticks()
         max_asteroids_in_match = 12 if current_level <= 30 else 7
-        if asteroids_spawned < max_asteroids_in_match:
+        if not boss_active and not boss_arriving and boss_defeated_timer == 0 and asteroids_spawned < max_asteroids_in_match:
             if current_tick - last_spawn_tick > next_spawn_time:
                 new_asteroid = Asteroid(asteroid_img, env=current_selected_env)
                 asteroid_group.add(new_asteroid)
@@ -1557,235 +1677,183 @@ while running:
                 last_spawn_tick = current_tick
                 next_spawn_time = random.randint(7000, 14000)
 
-        all_enemies_objs = fighters + elites + heavies
+        all_enemies_objs = fighters + elites + heavies + phantoms + berserkers + commanders
 
-        # --- PROGRESSIVE BEGINNER-FRIENDLY DIFFICULTY TUNING ---
-        eff_speed_lvl = min(current_level, 10)
-        eff_dmg_lvl = min(current_level, 3)
+        # --- UNIFIED DIFFICULTY SCALING via settings.get_difficulty() ---
+        # Accounts for environment-aware progression: Nebula L1 > Galaxy L10, Blackhole L1 > Nebula L10
+        _sc, _fc, _sm_override, _boss_agr = get_difficulty(current_level)
+        _env_mult_bonus = {1: 1.0, 2: 1.5, 3: 2.2}.get(current_selected_env, 1.0)
+        spawn_chance = max(8, int(_sc / _env_mult_bonus))
+        fire_chance  = max(18, int(_fc / _env_mult_bonus))
 
-        if current_level == 1:
-            max_fighters = 3
-            max_elites = 0
-            max_heavies = 0
-            spawn_chance = 75
-            fire_chance = 180
-        elif current_level == 2:
-            max_fighters = 4
-            max_elites = 1
-            max_heavies = 0
-            spawn_chance = 65
-            fire_chance = 160
-        elif current_level == 3:
-            max_fighters = 5
-            max_elites = 2
-            max_heavies = 0  # No heavies on lvl 3!
-            spawn_chance = 55
-            fire_chance = 140
-        elif current_level == 4:
-            max_fighters = 5
-            max_elites = 2
-            max_heavies = 0  # No heavies on lvl 4!
-            spawn_chance = 50
-            fire_chance = 130
-        elif current_level == 5:
-            max_fighters = 6
-            max_elites = 3
-            max_heavies = 1  # 1 heavy gently introduced
-            spawn_chance = 45
-            fire_chance = 115
-        elif current_level <= 10:
-            max_fighters = int(5 + current_level * 0.3)
-            max_elites = int(2 + current_level * 0.2)
-            max_heavies = int(1 + current_level * 0.15)
-            spawn_chance = max(25, int(50 - current_level * 1.5))
-            fire_chance = max(50, int(130 - current_level * 3.5))
-        else:
-            max_fighters = min(10, int(7 + current_level * 0.2))
-            max_elites = min(6, int(4 + current_level * 0.15))
-            max_heavies = min(4, int(2 + current_level * 0.1))
-            spawn_chance = max(15, int(40 - current_level * 0.6))
-            fire_chance = max(30, int(95 - current_level * 1.5))
+        _max_f, _max_e, _max_h, enable_phantom, enable_berserker, enable_commander = get_enemy_caps(current_level)
+        # Scale caps by environment too
+        _env_cap_bonus = {1: 1, 2: 2, 3: 3}.get(current_selected_env, 0)
+        max_fighters = _max_f + _env_cap_bonus
+        max_elites   = _max_e + _env_cap_bonus
+        max_heavies  = _max_h + _env_cap_bonus
+        max_phantoms   = (2 + current_level // 10) if enable_phantom else 0
+        max_berserkers = (1 + (current_level - 35) // 3) if enable_berserker else 0
+        max_commanders = (1 if enable_commander else 0)
 
         # --- SPAWN EXECUTION ---
         if not boss_active and not boss_arriving and boss_defeated_timer == 0:
             if len(fighters) < max_fighters and random.randint(1, spawn_chance) == 1:
                 nr = fighter_img.get_rect(center=(random.randint(50, WIDTH - 50), -50))
                 if check_enemy_spawn(nr, all_enemies_objs):
-                    fighters.append({'rect': nr, 'hp': 1, 'max_hp': 1, 'start_x': nr.x, 'time': random.randint(0, 50), 'type': 'fighter', 'dive_speed': random.uniform(2.5, 4.0)})
+                    fighters.append({'rect': nr, 'hp': 1, 'max_hp': 1, 'start_x': float(nr.x),
+                                     'time': random.randint(0, 50), 'type': 'fighter',
+                                     'dive_speed': random.uniform(2.5, 4.5),
+                                     'ai_state': 'descend', 'ai_timer': 0,
+                                     'target_x': float(nr.x), 'dodge_dir': random.choice([-1, 1])})
 
-            if current_level >= 2 and len(elites) < max_elites and random.randint(1, int(spawn_chance * 1.4)) == 1:
+            if current_level >= 2 and len(elites) < max_elites and random.randint(1, int(spawn_chance * 1.3)) == 1:
                 nr = elite_img.get_rect(center=(random.randint(50, WIDTH - 50), -50))
                 if check_enemy_spawn(nr, all_enemies_objs):
-                    e_hp = 2 if current_level <= 5 else 3
-                    elites.append({'rect': nr, 'hp': e_hp, 'max_hp': e_hp, 'start_x': nr.x, 'time': random.randint(0, 50), 'type': 'elite'})
+                    e_hp = max(2, min(current_level // 3 + 1, 6))
+                    elites.append({'rect': nr, 'hp': e_hp, 'max_hp': e_hp, 'start_x': float(nr.x),
+                                   'time': random.randint(0, 50), 'type': 'elite',
+                                   'ai_state': 'strafe', 'ai_timer': 0,
+                                   'target_x': float(nr.x), 'dodge_dir': random.choice([-1, 1])})
 
             if current_level >= 5 and len(heavies) < max_heavies and random.randint(1, int(spawn_chance * 2.2)) == 1:
                 nr = heavy_img.get_rect(center=(random.randint(60, WIDTH - 60), -60))
                 if check_enemy_spawn(nr, all_enemies_objs):
-                    h_hp = 5 if current_level <= 9 else 8
-                    heavies.append({'rect': nr, 'hp': h_hp, 'max_hp': h_hp, 'start_x': nr.x, 'time': 0, 'type': 'heavy'})
+                    h_hp = max(5, min(current_level // 2, 16))
+                    heavies.append({'rect': nr, 'hp': h_hp, 'max_hp': h_hp, 'start_x': float(nr.x),
+                                    'time': 0, 'type': 'heavy', 'ai_state': 'advance',
+                                    'ai_timer': 0, 'target_x': float(nr.x), 'dodge_dir': 1,
+                                    'sub_timer': 0})
 
-        # --- ENEMY AI: DIFFICULTY-SCALED MOVEMENT & COMBAT ---
-        # AI aggression scales with level: 0.0 (easy) to 1.0 (max)
-        ai_aggression = min(1.0, current_level / 20.0)
-        ai_accuracy   = min(1.0, current_level / 30.0)  # How well enemies predict player position
+            # Phantom spawning (Level 31+)
+            if enable_phantom and len(phantoms) < max_phantoms and random.randint(1, int(spawn_chance * 1.8)) == 1:
+                nr = fighter_img.get_rect(center=(random.randint(50, WIDTH - 50), -50))
+                if check_enemy_spawn(nr, all_enemies_objs):
+                    p_hp = max(3, min(current_level // 4, 8))
+                    phantoms.append({'rect': nr, 'hp': p_hp, 'max_hp': p_hp, 'start_x': float(nr.x),
+                                     'time': 0, 'type': 'phantom', 'ai_state': 'descend',
+                                     'ai_timer': 0, 'target_x': float(nr.x), 'dodge_dir': 1,
+                                     'is_cloaked': False, 'cloak_timer': 0})
 
-        for e_list, val, e_type in [(fighters, 1, 'fighter'), (elites, 2, 'elite'), (heavies, 5, 'heavy')]:
+            # Berserker spawning (Level 35+)
+            if enable_berserker and len(berserkers) < max_berserkers and random.randint(1, int(spawn_chance * 3)) == 1:
+                nr = heavy_img.get_rect(center=(random.randint(60, WIDTH - 60), -70))
+                if check_enemy_spawn(nr, all_enemies_objs):
+                    b_hp = max(10, min(current_level // 2 + 5, 22))
+                    berserkers.append({'rect': nr, 'hp': b_hp, 'max_hp': b_hp, 'start_x': float(nr.x),
+                                       'time': 0, 'type': 'berserker', 'ai_state': 'charge',
+                                       'ai_timer': 0, 'target_x': float(nr.x), 'dodge_dir': 1})
+
+            # Commander spawning (Level 38+)
+            if enable_commander and len(commanders) < max_commanders and random.randint(1, int(spawn_chance * 5)) == 1:
+                nr = heavy_img.get_rect(center=(random.randint(100, WIDTH - 100), -80))
+                if check_enemy_spawn(nr, all_enemies_objs):
+                    c_hp = max(15, min(current_level // 2 + 10, 30))
+                    commanders.append({'rect': nr, 'hp': c_hp, 'max_hp': c_hp, 'start_x': float(nr.x),
+                                       'time': 0, 'type': 'commander', 'ai_state': 'orbit',
+                                       'ai_timer': 0, 'target_x': float(nr.x), 'dodge_dir': 1,
+                                       'bodyguard_spawned': False})
+
+        # --- ENEMY AI: All types use run_enemy_ai() from ai.enemy_ai ---
+        ai_aggression = min(1.0, current_level / 16.0)
+        ai_accuracy   = min(1.0, current_level / 24.0)
+
+        _coin_vals = {'fighter': 2, 'elite': 4, 'heavy': 8,
+                      'phantom': 10, 'berserker': 15, 'commander': 20}
+
+        all_active_lists = [
+            (fighters,   fighter_img,  'fighter',   1),
+            (elites,     elite_img,    'elite',     2),
+            (heavies,    heavy_img,    'heavy',     5),
+            (phantoms,   fighter_img,  'phantom',   4),
+            (berserkers, heavy_img,    'berserker', 8),
+            (commanders, heavy_img,    'commander', 10),
+        ]
+
+        for e_list, e_img, e_type, coin_val in all_active_lists:
             for e in e_list[:]:
-                e['time'] = e.get('time', 0) + 1
-                e['start_x'] = e.get('start_x', e['rect'].x)
+                # Run AI (returns new bullets to spawn)
+                new_bullets = run_enemy_ai(e, bullets, player_rect, current_level,
+                                          env_speed_mult, ai_aggression, ai_accuracy,
+                                          BH_X, BH_Y, is_blackhole)
+                for nb in new_bullets:
+                    enemy_bullets.append(nb)
 
-                # Init per-enemy AI state fields
-                if 'ai_state' not in e:
-                    e['ai_state'] = 'descend'  # States: descend, strafe, dive, retreat
-                    e['ai_timer'] = 0
-                    e['target_x'] = e['rect'].x
-                    e['dodge_dir'] = random.choice([-1, 1])
-
-                e['ai_timer'] = e.get('ai_timer', 0) + 1
-
-                # === FIGHTER AI: Fast dive-bombers that dodge bullets ===
-                if e_type == 'fighter':
-                    dive_spd = (e.get('dive_speed', 3.0) + eff_speed_lvl * 0.2) * env_speed_mult
-
-                    # High-level fighters dodge incoming bullets
-                    if ai_aggression > 0.4:
-                        for b in bullets:
-                            if abs(b['rect'].centerx - e['rect'].centerx) < 40 and b['rect'].top < e['rect'].bottom:
-                                e['dodge_dir'] = 1 if e['rect'].centerx < 400 else -1
-                                break
-
-                    # Strafe: Sine wave + player tracking at higher levels
-                    track_weight = ai_aggression * 0.5  # 0 to 0.5
-                    target_x_drift = player_rect.centerx * track_weight + e['start_x'] * (1 - track_weight)
-                    strafe = math.sin(e['time'] * 0.09) * (3.5 + ai_aggression * 2.5) * env_speed_mult
-                    e['rect'].x += int(strafe) + int((target_x_drift - e['rect'].centerx) * 0.01 * ai_aggression)
-                    e['rect'].y += int(dive_spd)
-
-                # === ELITE AI: Flanking interceptors that predict player movement ===
-                elif e_type == 'elite':
-                    e_speed_y = (2.0 + eff_speed_lvl * 0.15) * env_speed_mult
-
-                    # State machine: alternate between strafing and diving at player
-                    if e['ai_timer'] % max(60, int(120 - ai_aggression * 80)) == 0:
-                        # Re-pick strategy based on aggression
-                        if random.random() < ai_aggression:
-                            e['ai_state'] = 'dive'
-                            # Predictive targeting: aim at where player WILL be
-                            predicted_x = player_rect.centerx + (player_rect.centerx - e['rect'].centerx) * 0.2 * ai_accuracy
-                            e['target_x'] = max(30, min(WIDTH - 30, int(predicted_x)))
-                        else:
-                            e['ai_state'] = 'strafe'
-                            e['target_x'] = random.randint(60, WIDTH - 60)
-
-                    if e['ai_state'] == 'dive':
-                        dx_to_target = e['target_x'] - e['rect'].centerx
-                        e['rect'].x += int(dx_to_target * 0.05 * (1 + ai_aggression))
-                        e['rect'].y += int(e_speed_y * 1.3)
-                    else:
-                        wave = math.sin(e['time'] * 0.05) * 6
-                        e['rect'].x = int(e['start_x'] + wave)
-                        if e['rect'].centerx < player_rect.centerx - 10:
-                            e['start_x'] += max(1, int(ai_aggression * 3))
-                        elif e['rect'].centerx > player_rect.centerx + 10:
-                            e['start_x'] -= max(1, int(ai_aggression * 3))
-                        e['rect'].y += int(e_speed_y)
-
-                # === HEAVY AI: Tanky bruisers that strafe and suppress player position ===
-                elif e_type == 'heavy':
-                    h_speed_y = (1.4 + eff_speed_lvl * 0.1) * env_speed_mult
-
-                    # Heavy AI: alternates between strafing and positioning above player
-                    if e['ai_timer'] % max(80, int(180 - ai_aggression * 100)) == 0:
-                        if random.random() < ai_aggression * 0.7:
-                            # Position directly above player for sustained fire
-                            e['target_x'] = max(40, min(WIDTH - 40, player_rect.centerx + random.randint(-30, 30)))
-                        else:
-                            e['target_x'] = random.randint(80, WIDTH - 80)
-
-                    dx_to_target = e['target_x'] - e['rect'].centerx
-                    move_speed_x = min(abs(dx_to_target), max(1, int(2 + ai_aggression * 3)))
-                    if dx_to_target > 0:
-                        e['rect'].x += move_speed_x
-                    elif dx_to_target < 0:
-                        e['rect'].x -= move_speed_x
-                    e['rect'].y += int(h_speed_y)
-
-                # Blackhole Attraction on Enemies
-                if is_blackhole:
-                    edx = BH_X - e['rect'].centerx
-                    edy = BH_Y - e['rect'].centery
-                    edist = math.hypot(edx, edy)
-                    if edist > 0:
-                        e_pull = max(0.9, min(4.5, 600.0 / (edist + 70.0)))
-                        e['rect'].x += int((edx / edist) * e_pull)
-                        e['rect'].y += int((edy / edist) * e_pull)
-
-                    # Enemy sucked into singularity!
-                    if edist < 28:
-                        if e in e_list:
-                            e_list.remove(e)
-                        update_coins(1 if val == 1 else 2 if val == 2 else 5)
-                        kill_count += 1
-                        expl_snd.play()
-                        for _ in range(16):
-                            particles.append([BH_X, BH_Y, random.uniform(-4, 4), random.uniform(-4, 4), random.randint(3, 7), random.choice(BLAST_COLORS)])
-                        continue
-
-                # Separation logic to avoid clumping
-                for other in all_enemies_objs:
-                    if e != other and e['rect'].colliderect(other['rect']):
-                        if e['rect'].x < other['rect'].x:
-                            e['rect'].x -= 2
-                        else:
-                            e['rect'].x += 2
-
-                e['rect'].x = max(0, min(WIDTH - e['rect'].width, e['rect'].x))
-
-                # Enemy Shooting: Difficulty-scaled fire rate and bullet patterns
-                if random.randint(1, int(fire_chance)) == 1:
-                    dmg = eff_dmg_lvl * val
+                # Legacy fire logic for basic enemies (fighter/elite/heavy)
+                # using fire_chance — ensures compatibility with existing tuning
+                if e_type in ('fighter', 'elite', 'heavy') and random.randint(1, int(fire_chance)) == 1:
+                    dmg = max(1, min(current_level // 4 + 1, 5))
                     if e_type == 'fighter':
-                        # At high levels, fighters aim at predicted player X
-                        if ai_accuracy > 0.5 and random.random() < ai_accuracy:
-                            bx = player_rect.centerx - 3
-                        else:
-                            bx = e['rect'].centerx - 3
-                        enemy_bullets.append({'rect': pygame.Rect(bx, e['rect'].bottom, 6, 14), 'damage': dmg, 'color': RED})
+                        bx = (player_rect.centerx - 3 if ai_accuracy > 0.5 and random.random() < ai_accuracy
+                              else e['rect'].centerx - 3)
+                        enemy_bullets.append({'rect': pygame.Rect(bx, e['rect'].bottom, 6, 14),
+                                              'damage': dmg, 'color': RED, 'vx': 0, 'vy': 1.0, 'btype': 'fighter'})
                     elif e_type == 'elite':
-                        # Elites fire dual shots; at high level they angle inward
-                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].left + 4, e['rect'].bottom, 6, 14), 'damage': dmg, 'color': MAGENTA})
-                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].right - 10, e['rect'].bottom, 6, 14), 'damage': dmg, 'color': MAGENTA})
-                        if ai_aggression > 0.6 and random.random() < 0.4:
-                            enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx - 3, e['rect'].bottom, 6, 14), 'damage': dmg, 'color': CYAN})
+                        for ex_off in [-5, 5]:
+                            enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx + ex_off, e['rect'].bottom, 6, 14),
+                                                  'damage': dmg, 'color': MAGENTA, 'vx': ex_off * 0.06, 'vy': 1.0, 'btype': 'elite'})
                     elif e_type == 'heavy':
-                        # Heavies fire 3-way spread; at high level they add a 4th center shot
-                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx - 5, e['rect'].bottom, 10, 16), 'damage': dmg + 5, 'color': ORANGE})
-                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].left + 5, e['rect'].bottom - 5, 8, 14), 'damage': dmg, 'color': YELLOW})
-                        enemy_bullets.append({'rect': pygame.Rect(e['rect'].right - 13, e['rect'].bottom - 5, 8, 14), 'damage': dmg, 'color': YELLOW})
-                        if ai_aggression > 0.8:
-                            enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx - 3, e['rect'].bottom - 8, 6, 14), 'damage': dmg + 2, 'color': RED})
+                        for angle_d in [-20, 0, 20]:
+                            rad = math.radians(angle_d + 90)
+                            enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx - 5, e['rect'].bottom, 10, 16),
+                                                  'damage': dmg + 4, 'color': ORANGE,
+                                                  'vx': math.cos(rad) * 3.5,
+                                                  'vy': math.sin(rad) * 3.5, 'btype': 'heavy'})
 
-                # Emit thrusters for active enemies
-                vfx_engine.emit_enemy_thruster(e['rect'].centerx, e['rect'].top, e_type)
+                # Emit thrusters
+                vfx_engine.emit_enemy_thruster(e['rect'].centerx, e['rect'].top, e_type, e['rect'].width)
 
-                # Collision with Player
+                # Enemy collision with player
                 if e['rect'].colliderect(player_rect):
+                    player_rect.y = min(PLAYER_MAX_Y, player_rect.y + 10)
                     if e in e_list:
                         e_list.remove(e)
                     if not skills['immortal']['active'] and revive_protection_timer <= 0:
-                        player_health -= (15 if e_type == 'fighter' else 25 if e_type == 'elite' else 40)
+                        dmg_contact = {'fighter': 15, 'elite': 25, 'heavy': 40,
+                                       'phantom': 20, 'berserker': 50, 'commander': 30}.get(e_type, 15)
+                        player_health -= dmg_contact
                         player_dmg_anim = 15
+                        global_shake_intensity = 8.0
                         hit_snd.play()
-                    for _ in range(15):
-                        particles.append([e['rect'].centerx, e['rect'].centery, random.uniform(-4, 4), random.uniform(-4, 4), random.randint(3, 6), random.choice(BLAST_COLORS)])
+                    # 5-stage explosion on contact
+                    vfx_engine.spawn_explosion(e['rect'].centerx, e['rect'].centery, size='medium', enemy_type=e_type)
+                    for _ in range(12):
+                        particles.append([e['rect'].centerx, e['rect'].centery,
+                                         random.uniform(-4, 4), random.uniform(-4, 4),
+                                         random.randint(3, 6), random.choice(BLAST_COLORS)])
                 elif e['rect'].top > HEIGHT:
                     if e in e_list:
                         e_list.remove(e)
 
+        # Update and draw all explosion particles + ripples
+        vfx_engine.update_and_draw_explosions(screen)
+        vfx_engine.update_and_draw_ripples(screen)
+        vfx_engine.update_and_draw_arcs(screen)
+
+        # Ambient environment particles
+        if visual_quality == 'high':
+            vfx_engine.update_and_draw_ambient(screen, env=current_selected_env)
 
         # Emit player ship engine thrusters
         vfx_engine.emit_player_thruster(player_rect.centerx, player_rect.bottom)
+
+        # Enemy-Enemy Anti-Merge Collision
+        all_e = fighters + elites + heavies + phantoms + berserkers + commanders
+        for i, e1 in enumerate(all_e):
+            for j, e2 in enumerate(all_e):
+                if i < j and e1['rect'].colliderect(e2['rect']):
+                    dx = e1['rect'].centerx - e2['rect'].centerx
+                    dy = e1['rect'].centery - e2['rect'].centery
+                    if dx == 0 and dy == 0:
+                        dx = 1
+                    if abs(dx) > abs(dy):
+                        shift = 2 if dx > 0 else -2
+                        e1['rect'].x += shift
+                        e2['rect'].x -= shift
+                    else:
+                        shift = 2 if dy > 0 else -2
+                        e1['rect'].y += shift
+                        e2['rect'].y -= shift
 
         # =========================================================
         # BOSS AI BRAIN — Scripted State Machine (GTA-style)
@@ -1839,8 +1907,8 @@ while running:
                     # Levels 31-40: Hard tier, high speed, full bullet-hell abilities
                     b_spd = (2.8 + (boss_ai_phase - 1) * 1.2) * env_speed_mult
 
-                # ── ENTRY: slide boss into view ──────────────────────────────
-                if boss_rect.top < 70:
+                # ── ENTRY: slide boss into cruising altitude ─────────────────
+                if boss_rect.top < 65:
                     boss_rect.y += 2
 
                 # ── CORNER HUNT: Check if player is hugging an edge (Lvl 11+)
@@ -1855,7 +1923,10 @@ while running:
                 if boss_ai_state == 'patrol':
                     dx = player_rect.centerx - boss_rect.centerx
                     boss_rect.x += int(dx * 0.02 * b_spd)
-                    boss_rect.x = max(0, min(WIDTH - boss_rect.width, boss_rect.x))
+                    
+                    # Altitude stabilization at cruising height
+                    if boss_rect.top < 65: boss_rect.y += 1
+                    elif boss_rect.top > 80: boss_rect.y -= 1
                     
                     # Idle animation based on level
                     if current_level <= 10:
@@ -1889,16 +1960,18 @@ while running:
                         boss_sweep_dir = random.choice([-1, 1])
 
                 # ─────────────────────────────────────────────────────────────
-                # STATE: chase — Aggressive direct pursuit of player
+                # STATE: chase — Horizontal pursuit in the upper sector
+                # (Strictly capped in Y so it never descends near the player)
                 # ─────────────────────────────────────────────────────────────
                 elif boss_ai_state == 'chase':
                     dx = player_rect.centerx - boss_rect.centerx
-                    dy = (player_rect.centery - 120) - boss_rect.centery
                     boss_rect.x += int(dx * 0.04 * b_spd)
-                    boss_rect.y += max(0, int(dy * 0.015))   # Only moves down, not off-screen
-                    boss_rect.y = max(60, min(HEIGHT // 2, boss_rect.y))
-                    boss_rect.x = max(0, min(WIDTH - boss_rect.width, boss_rect.x))
-                    boss_angle += 2.0 * boss_sweep_dir   # Wobble rotation during chase
+                    
+                    # Small altitude oscillation in the upper sector (65 to 110)
+                    target_chase_y = 75 + int(math.sin(boss_ai_timer * 0.06) * 15)
+                    if boss_rect.y < target_chase_y: boss_rect.y += 1
+                    elif boss_rect.y > target_chase_y: boss_rect.y -= 1
+                    boss_angle += 2.0 * boss_sweep_dir
 
                     if boss_ai_timer > 150:
                         boss_ai_state = 'patrol'
@@ -1906,11 +1979,14 @@ while running:
 
                 # ─────────────────────────────────────────────────────────────
                 # STATE: sweep — Full-width screen sweep, fires a curtain of bullets
-                # Edge-huggers cannot avoid a sweep
                 # ─────────────────────────────────────────────────────────────
                 elif boss_ai_state == 'sweep':
                     boss_rect.x += int(b_spd * 1.8 * boss_sweep_dir)
                     boss_angle += 3.0 * boss_sweep_dir   # Visual tilt during sweep
+                    
+                    # Maintain upper altitude
+                    if boss_rect.top < 65: boss_rect.y += 1
+                    elif boss_rect.top > 80: boss_rect.y -= 1
 
                     # Reverse at edges — full screen coverage
                     if boss_rect.right >= WIDTH:
@@ -1923,11 +1999,10 @@ while running:
                     # Bank into the turn
                     boss_angle = -15.0 * boss_sweep_dir
 
-                    # Fire a dense curtain every 12 frames during sweep
-                    if boss_ai_timer % 12 == 0:
-                        boss_eff_damage = min(current_level, 5)
-                        dmg = 6 * boss_eff_damage
-                        # Spread bullets across the boss width + angled to sides
+                    # Fire curtain every 14 frames during sweep
+                    if boss_ai_timer % 14 == 0:
+                        boss_eff_damage = min(current_level, 4)
+                        dmg = 5 * boss_eff_damage
                         for bx_off in [-30, -10, 10, 30]:
                             bx = boss_rect.centerx + bx_off
                             enemy_bullets.append({'rect': pygame.Rect(bx - 4, boss_rect.bottom, 8, 16),
@@ -1939,24 +2014,23 @@ while running:
                         boss_angle = 0.0
 
                 # ─────────────────────────────────────────────────────────────
-                # STATE: corner_hunt — Boss slides to player's edge and fires
-                # Specifically counters edge camping
+                # STATE: corner_hunt — Boss tracks player horizontally at range
                 # ─────────────────────────────────────────────────────────────
                 elif boss_ai_state == 'corner_hunt':
-                    # Mirror boss X directly to the player's corner
                     target_x = player_rect.centerx
                     dx = target_x - boss_rect.centerx
                     boss_rect.x += int(dx * 0.06 * b_spd)
-                    boss_rect.x = max(0, min(WIDTH - boss_rect.width, boss_rect.x))
-                    boss_angle = math.sin(boss_ai_timer * 0.15) * 12  # Aggressive wobble
+                    boss_angle = math.sin(boss_ai_timer * 0.15) * 12
+                    
+                    if boss_rect.top < 65: boss_rect.y += 1
+                    elif boss_rect.top > 80: boss_rect.y -= 1
 
-                    # Fire angled volley aimed at the player's exact position
-                    if boss_ai_timer % 18 == 0:
-                        boss_eff_damage = min(current_level, 5)
-                        dmg = 8 * boss_eff_damage
+                    # Fire angled volley aimed at the player's position
+                    if boss_ai_timer % 20 == 0:
+                        boss_eff_damage = min(current_level, 4)
+                        dmg = 6 * boss_eff_damage
                         bx = boss_rect.centerx
                         by = boss_rect.bottom
-                        # Direct aimed shot at player
                         aim_dx = player_rect.centerx - bx
                         aim_dy = player_rect.centery - by
                         aim_dist = max(1, math.hypot(aim_dx, aim_dy))
@@ -1965,7 +2039,7 @@ while running:
                         enemy_bullets.append({
                             'rect': pygame.Rect(bx - 5, by, 10, 20),
                             'damage': dmg, 'color': (255, 80, 0),
-                            'vx': norm_x * 5.0, 'vy': norm_y * 5.0
+                            'vx': norm_x * 4.5, 'vy': norm_y * 4.5
                         })
 
                     if boss_ai_timer > 200:
@@ -1974,61 +2048,60 @@ while running:
                         boss_angle = 0.0
 
                 # ─────────────────────────────────────────────────────────────
-                # STATE: dive — Boss dive-bombs the player's current position
+                # STATE: dive — Controlled dive that stays far above player zone
                 # ─────────────────────────────────────────────────────────────
                 elif boss_ai_state == 'dive':
+                    # Strictly cap the dive point in Y so boss_rect.bottom never exceeds 260
+                    max_dive_y = max(60, 260 - boss_rect.height)
                     if boss_ai_timer == 1:
-                        # Target player X, but limit Y so it doesn't crash into player completely
-                        boss_dive_target = (player_rect.centerx, min(HEIGHT // 2 + 50, player_rect.centery - 150))
+                        boss_dive_target = (player_rect.centerx, max_dive_y)
 
                     tdx = boss_dive_target[0] - boss_rect.centerx
                     tdy = boss_dive_target[1] - boss_rect.centery
                     tdist = max(1, math.hypot(tdx, tdy))
-                    dive_spd = b_spd * 2.2
+                    dive_spd = b_spd * 2.0
                     boss_rect.x += int((tdx / tdist) * dive_spd)
                     boss_rect.y += int((tdy / tdist) * dive_spd)
-                    boss_rect.x = max(0, min(WIDTH - boss_rect.width, boss_rect.x))
-                    boss_rect.y = max(60, min(HEIGHT // 2 + 50, boss_rect.y)) # Never go below this
-                    boss_angle = math.sin(boss_ai_timer * 0.2) * 20   # Fast shake during dive, no full spin
+                    boss_angle = math.sin(boss_ai_timer * 0.2) * 16
 
                     if boss_ai_timer > 80:
                         # Fire burst on reaching target area
-                        boss_eff_damage = min(current_level, 5)
-                        dmg = 9 * boss_eff_damage
+                        boss_eff_damage = min(current_level, 4)
+                        dmg = 7 * boss_eff_damage
                         for angle_deg in range(0, 360, 45):
                             rad = math.radians(angle_deg)
                             enemy_bullets.append({
                                 'rect': pygame.Rect(boss_rect.centerx - 5, boss_rect.centery, 10, 10),
                                 'damage': dmg, 'color': (255, 50, 200),
-                                'vx': math.cos(rad) * 4.0, 'vy': math.sin(rad) * 4.0
+                                'vx': math.cos(rad) * 3.8, 'vy': math.sin(rad) * 3.8
                             })
                         boss_ai_state = 'patrol'
                         boss_ai_timer = 0
                         boss_angle = 0.0
 
                 # ─────────────────────────────────────────────────────────────
-                # STATE: spiral — Boss fires spiral bullet pattern
-                # Covers entire screen; impossible to hide in corners
+                # STATE: spiral — Boss fires spiral bullet pattern from upper sector
                 # ─────────────────────────────────────────────────────────────
                 elif boss_ai_state == 'spiral':
-                    # Hold position centered
                     dx = (WIDTH // 2) - boss_rect.centerx
                     boss_rect.x += int(dx * 0.04)
-                    boss_rect.x = max(0, min(WIDTH - boss_rect.width, boss_rect.x))
-                    boss_angle = math.sin(boss_ai_timer * 0.1) * 15   # Gentle wobble instead of spin
+                    boss_angle = math.sin(boss_ai_timer * 0.1) * 12
+                    
+                    if boss_rect.top < 65: boss_rect.y += 1
+                    elif boss_rect.top > 80: boss_rect.y -= 1
 
-                    if boss_ai_timer % 6 == 0:
+                    if boss_ai_timer % 7 == 0:
                         boss_spiral_t += 0.45
-                        boss_eff_damage = min(current_level, 5)
-                        dmg = 5 * boss_eff_damage
+                        boss_eff_damage = min(current_level, 4)
+                        dmg = 4 * boss_eff_damage
                         for arm in range(3):    # 3-arm spiral
-                            arm_angle = boss_spiral_t + (arm * 2.094)   # 120° apart
-                            sx = math.cos(arm_angle) * 5.0
-                            sy = math.sin(arm_angle) * 5.0
+                            arm_angle = boss_spiral_t + (arm * 2.094)
+                            sx = math.cos(arm_angle) * 4.5
+                            sy = math.sin(arm_angle) * 4.5
                             enemy_bullets.append({
                                 'rect': pygame.Rect(boss_rect.centerx - 4, boss_rect.centery, 8, 8),
                                 'damage': dmg, 'color': (100, 200, 255),
-                                'vx': sx, 'vy': abs(sy) + 1.0   # Always downward component
+                                'vx': sx, 'vy': abs(sy) + 1.0
                             })
 
                     if boss_ai_timer > 200:
@@ -2040,15 +2113,16 @@ while running:
                 # STATE: rage — Short burst state on phase transition
                 # ─────────────────────────────────────────────────────────────
                 elif boss_ai_state == 'rage':
-                    # Violent left-right shaking
                     boss_rect.x += int(math.sin(boss_ai_timer * 0.5) * b_spd * 3)
-                    boss_rect.x = max(0, min(WIDTH - boss_rect.width, boss_rect.x))
-                    boss_angle = math.sin(boss_ai_timer * 0.8) * 18  # Violent shake
+                    boss_angle = math.sin(boss_ai_timer * 0.8) * 16
+                    
+                    if boss_rect.top < 65: boss_rect.y += 1
+                    elif boss_rect.top > 80: boss_rect.y -= 1
 
                     # Fire a dense burst during rage
-                    if boss_ai_timer % 10 == 0:
-                        boss_eff_damage = min(current_level, 5)
-                        dmg = 7 * boss_eff_damage
+                    if boss_ai_timer % 12 == 0:
+                        boss_eff_damage = min(current_level, 4)
+                        dmg = 5 * boss_eff_damage
                         for bx_off in range(-40, 50, 20):
                             enemy_bullets.append({'rect': pygame.Rect(boss_rect.centerx + bx_off - 4, boss_rect.bottom, 8, 16),
                                                   'damage': dmg, 'color': (255, 100, 0), 'vx': 0, 'vy': 1.0})
@@ -2057,21 +2131,32 @@ while running:
                         boss_ai_state = 'sweep'
                         boss_ai_timer = 0
 
+                # ── GLOBAL BOSS BOUNDARY LIMIT (Strict Y-Distance from Player) ──
+                # Guarantees boss_rect.bottom NEVER crosses y=270, leaving 110+ px before player boundary (y=380)
+                BOSS_MAX_BOTTOM_Y = 270
+                max_boss_top = max(50, BOSS_MAX_BOTTOM_Y - boss_rect.height)
+                boss_rect.y = max(50, min(max_boss_top, boss_rect.y))
+                boss_rect.x = max(0, min(WIDTH - boss_rect.width, boss_rect.x))
+
                 # ── STANDARD SHOOT for patrol/chase (non-sweep states) ───────
                 if boss_ai_state in ('patrol', 'chase', 'corner_hunt'):
-                    # Shoot chance & bullet count scaled by level tier
+                    # Shoot frequency & bullet count scaled smoothly by level tier
                     if current_level <= 10:
                         shoot_interval = 50
                         shots = 1
                         dmg = 8
-                    elif current_level <= 30:
-                        shoot_interval = 35
+                    elif current_level <= 20:
+                        shoot_interval = 40
                         shots = 2 if boss_ai_phase > 1 else 1
+                        dmg = 10
+                    elif current_level <= 30:
+                        shoot_interval = 32
+                        shots = 2
                         dmg = 14
                     else:
-                        shoot_interval = 22
+                        shoot_interval = 24
                         shots = min(3 + (boss_ai_phase - 1), 4)
-                        dmg = 20
+                        dmg = 18
 
                     if boss_ai_timer % shoot_interval == 0:
                         for s_i in range(shots):
@@ -2083,6 +2168,39 @@ while running:
 
 
         # --- DRAWING & COLLISIONS ---
+        # Boss vs Player Solid Boundary: player cannot enter or merge into the boss ship
+        if boss_active and boss_death_timer == 0:
+            if player_rect.colliderect(boss_rect):
+                dx = player_rect.centerx - boss_rect.centerx
+                dy = player_rect.centery - boss_rect.centery
+                if abs(dx) > abs(dy):
+                    if dx > 0: player_rect.left = boss_rect.right + 4
+                    else: player_rect.right = boss_rect.left - 4
+                else:
+                    if dy > 0: player_rect.top = boss_rect.bottom + 4
+                    else: player_rect.bottom = boss_rect.top - 4
+                
+                player_rect.top = max(PLAYER_BOSS_MIN_Y, player_rect.top)
+                player_rect.bottom = min(PLAYER_MAX_Y, player_rect.bottom)
+                player_rect.left = max(PLAYER_MIN_X, player_rect.left)
+                player_rect.right = min(PLAYER_MAX_X, player_rect.right)
+
+                if not skills['immortal']['active'] and revive_protection_timer <= 0 and player_dmg_anim <= 0:
+                    player_health -= 15
+                    player_dmg_anim = 30  # Give half a second of collision invulnerability
+                    global_shake_intensity = 10.0
+                    hit_snd.play()
+
+                for _ in range(12):
+                    particles.append([
+                        player_rect.centerx + random.uniform(-15, 15),
+                        player_rect.top,
+                        random.uniform(-4, 4),
+                        random.uniform(-3, 3),
+                        random.randint(3, 6),
+                        random.choice([(255, 180, 0), (255, 80, 20), (0, 255, 255)])
+                    ])
+
         # Render all ship thrusters beneath hull sprites
         vfx_engine.update_and_draw_thrusters(screen)
 
@@ -2098,9 +2216,19 @@ while running:
             else:
                 eb['rect'].y += eb_speed
             b_col = eb.get('color', RED)
-            pygame.draw.rect(screen, b_col, eb['rect'], border_radius=3)
-            if eb['rect'].width > 5:
-                pygame.draw.rect(screen, WHITE, eb['rect'].inflate(-2, -4), border_radius=2)
+            b_type = eb.get('btype', 'fighter')
+
+            # Emit trail particles for enemy bullets (high quality only)
+            if visual_quality == 'high':
+                vfx_engine.emit_bullet_trail(eb['rect'].centerx, eb['rect'].centery,
+                                             color=b_col, is_enemy=True)
+
+            # Stylized bullet rendering
+            if b_type == 'boss' or eb['rect'].width >= 10:
+                draw_boss_bullet(screen, eb['rect'], color=b_col, pulse_t=ui_pulse_t)
+            else:
+                angle_deg = math.degrees(math.atan2(-vy, vx)) - 90
+                draw_enemy_bullet(screen, eb['rect'], color=b_col, bullet_type=b_type, pulse_t=ui_pulse_t, angle=angle_deg)
 
             if eb['rect'].colliderect(player_rect):
                 if not skills['immortal']['active'] and revive_protection_timer <= 0:
@@ -2121,7 +2249,19 @@ while running:
             b['rect'].y -= max(8, pb_speed)
             hit = False
 
-            if boss_active and boss_death_timer == 0:
+            if b in bullets:
+                for eb in enemy_bullets[:]:
+                    if b['rect'].colliderect(eb['rect']):
+                        if b in bullets:
+                            bullets.remove(b)
+                        if eb in enemy_bullets:
+                            enemy_bullets.remove(eb)
+                        if visual_quality == 'high':
+                            for _ in range(5):
+                                particles.append([b['rect'].centerx, b['rect'].centery, random.uniform(-3, 3), random.uniform(-3, 3), random.randint(3, 6), ORANGE])
+                        break
+
+            if boss_active and boss_death_timer == 0 and b in bullets:
                 if b['rect'].colliderect(boss_rect):
                     boss_hp -= 5
                     if show_damage_enabled:
@@ -2137,8 +2277,19 @@ while running:
                     hit = True
 
             if not hit:
-                for e_list, c_val, e_type in [(fighters, 1, 'fighter'), (elites, 2, 'elite'), (heavies, 5, 'heavy')]:
+                for e_list, c_val, e_type in [
+                    (fighters, 1, 'fighter'),
+                    (elites, 2, 'elite'),
+                    (heavies, 5, 'heavy'),
+                    (phantoms, 4, 'phantom'),
+                    (berserkers, 8, 'berserker'),
+                    (commanders, 10, 'commander'),
+                ]:
                     for e in e_list[:]:
+                        # Phantoms are invulnerable while cloaked (ambush predator mechanic)
+                        if e_type == 'phantom' and e.get('is_cloaked', False):
+                            continue
+
                         if b['rect'].colliderect(e['rect']):
                             e['hp'] -= 1
                             if show_damage_enabled:
@@ -2149,13 +2300,19 @@ while running:
                             if e['hp'] <= 0:
                                 if e in e_list:
                                     e_list.remove(e)
-                                update_coins(2 if c_val == 1 else 4 if c_val == 2 else 8)
+                                update_coins(2 if c_val == 1 else 4 if c_val == 2 else 8 if c_val == 5 else 12)
                                 kill_count += 1
+                                if spawn_director:
+                                    spawn_director.record_kill()
                                 expl_snd.play()
-                                if c_val == 5:
-                                    global_shake_intensity = 4.0  # Small shake for heavy enemy destruction
+                                if c_val >= 5:
+                                    global_shake_intensity = 4.0 if c_val == 5 else 7.0
 
-                                for _ in range(18):
+                                # 5-Stage Particle VFX Explosion
+                                vfx_sz = 'large' if c_val >= 8 else ('medium' if c_val >= 4 else 'small')
+                                vfx_engine.spawn_explosion(e['rect'].centerx, e['rect'].centery, size=vfx_sz, enemy_type=e_type)
+
+                                for _ in range(14 if c_val < 5 else 24):
                                     p_color = random.choice(BLAST_COLORS)
                                     particles.append([e['rect'].centerx, e['rect'].centery, random.uniform(-5, 5), random.uniform(-5, 5), random.randint(3, 7), p_color])
                             else:
@@ -2178,10 +2335,7 @@ while running:
 
         for a in achievements[:]:
             a['rect'].y += max(2, int(3 * env_speed_mult))
-            p_color = skills[a['type']]['color']
-            pygame.draw.circle(screen, p_color, a['rect'].center, 16)
-            pygame.draw.circle(screen, WHITE, a['rect'].center, 8)
-            draw_text("S" if a['type'] == 'immortal' else "2X", FONT_HP, BLACK, a['rect'].centerx, a['rect'].centery)
+            draw_powerup_orb(screen, a['rect'].center, a['type'], now, ui_pulse_t)
 
             if a['rect'].colliderect(player_rect):
                 skills[a['type']]['active'] = True
@@ -2193,10 +2347,15 @@ while running:
                 if a in achievements:
                     achievements.remove(a)
 
-        # Drawing Bullets
+        # Drawing Player Bullets — plasma capsules with glowing trails
         for b in bullets:
-            pygame.draw.rect(screen, CYAN, b['rect'], border_radius=3)
-            pygame.draw.rect(screen, WHITE, b['rect'].inflate(-2, -4), border_radius=2)
+            # Emit plasma trail
+            if visual_quality == 'high':
+                vfx_engine.emit_bullet_trail(b['rect'].centerx, b['rect'].top, color=NEON_TEAL)
+            draw_plasma_bullet(screen, b['rect'], color=NEON_TEAL, pulse_t=ui_pulse_t)
+
+        # Render bullet trails
+        vfx_engine.update_and_draw_trails(screen)
 
         # Drawing Ships (with Blackhole shrinkage if near center)
         for f in fighters:
@@ -2271,6 +2430,56 @@ while running:
                 pygame.draw.rect(screen, (40, 40, 40), (h['rect'].left + 5, h['rect'].top - 10, h['rect'].width - 10, 5), border_radius=2)
                 pygame.draw.rect(screen, ORANGE, (h['rect'].left + 5, h['rect'].top - 10, hp_w, 5), border_radius=2)
 
+        # Drawing Phantoms (Cloaking stealth predator)
+        for p in phantoms:
+            is_cloaked = p.get('is_cloaked', False)
+            if is_cloaked:
+                ghost_surf = fighter_img.copy()
+                ghost_surf.set_alpha(45)
+                screen.blit(ghost_surf, p['rect'])
+                if visual_quality == 'high':
+                    pygame.draw.rect(screen, (*NEON_VIOLET, 80), p['rect'].inflate(4, 4), width=1, border_radius=8)
+            else:
+                screen.blit(fighter_img, p['rect'])
+                if visual_quality == 'high':
+                    pygame.draw.circle(screen, NEON_VIOLET, (p['rect'].centerx, p['rect'].top), 4)
+
+            if p['hp'] < p['max_hp']:
+                hp_w = int((p['rect'].width - 8) * (p['hp'] / p['max_hp']))
+                pygame.draw.rect(screen, (40, 40, 40), (p['rect'].left + 4, p['rect'].top - 8, p['rect'].width - 8, 4), border_radius=2)
+                pygame.draw.rect(screen, NEON_VIOLET, (p['rect'].left + 4, p['rect'].top - 8, hp_w, 4), border_radius=2)
+
+        # Drawing Berserkers (Hyper-aggressive scarlet tank)
+        for bz in berserkers:
+            screen.blit(heavy_img, bz['rect'])
+            if visual_quality == 'high':
+                # Pulsing rage aura
+                r_alpha = int(80 + 60 * math.sin(ui_pulse_t * 6))
+                r_surf = pygame.Surface((bz['rect'].width + 12, bz['rect'].height + 12), pygame.SRCALPHA)
+                pygame.draw.rect(r_surf, (*NEON_SCARLET, r_alpha), r_surf.get_rect(), border_radius=12, width=2)
+                screen.blit(r_surf, (bz['rect'].x - 6, bz['rect'].y - 6))
+
+            if bz['hp'] < bz['hp']:
+                pass
+            if bz['hp'] < bz['max_hp']:
+                hp_w = int((bz['rect'].width - 10) * (bz['hp'] / bz['max_hp']))
+                pygame.draw.rect(screen, (40, 40, 40), (bz['rect'].left + 5, bz['rect'].top - 10, bz['rect'].width - 10, 5), border_radius=2)
+                pygame.draw.rect(screen, NEON_SCARLET, (bz['rect'].left + 5, bz['rect'].top - 10, hp_w, 5), border_radius=2)
+
+        # Drawing Commanders (Golden squad leader with tactical beacon)
+        for cmd in commanders:
+            screen.blit(heavy_img, cmd['rect'])
+            # Tactical command beacon aura
+            cmd_surf = pygame.Surface((cmd['rect'].width + 16, cmd['rect'].height + 16), pygame.SRCALPHA)
+            pygame.draw.rect(cmd_surf, (*NEON_GOLD, 90), cmd_surf.get_rect(), border_radius=14, width=2)
+            screen.blit(cmd_surf, (cmd['rect'].x - 8, cmd['rect'].y - 8))
+            draw_text("*", FONT_TINY, NEON_GOLD, cmd['rect'].centerx, cmd['rect'].top - 12)
+
+            if cmd['hp'] < cmd['max_hp']:
+                hp_w = int((cmd['rect'].width - 10) * (cmd['hp'] / cmd['max_hp']))
+                pygame.draw.rect(screen, (40, 40, 40), (cmd['rect'].left + 5, cmd['rect'].top - 10, cmd['rect'].width - 10, 5), border_radius=2)
+                pygame.draw.rect(screen, NEON_GOLD, (cmd['rect'].left + 5, cmd['rect'].top - 10, hp_w, 5), border_radius=2)
+
         if boss_active and boss_death_timer == 0:
             if boss_angle != 0.0:
                 rotated_boss = pygame.transform.rotate(current_boss_img, boss_angle)
@@ -2327,71 +2536,105 @@ while running:
             else:
                 draw_rect = player_rect.copy()
                 if player_fire_anim > 0 and visual_quality == 'high':
-                    draw_rect.y += 3
+                    draw_rect.y += 2
                 screen.blit(player_img, draw_rect)
                 if player_fire_anim > 0 and visual_quality == 'high':
-                    import pygame
-                    pygame.draw.circle(screen, (255, 255, 200), (draw_rect.centerx, draw_rect.top), 8 + player_fire_anim)
-                    pygame.draw.circle(screen, (255, 150, 50), (draw_rect.centerx, draw_rect.top), 4 + player_fire_anim)
+                    vfx_engine.draw_muzzle_flash(screen, draw_rect.centerx, draw_rect.top)
         if player_dmg_anim > 0: player_dmg_anim -= 1
         if player_fire_anim > 0: player_fire_anim -= 1
 
         # ==========================
-        # MODERN UI & HUD
+        # PREMIUM HOLOGRAPHIC HUD
         # ==========================
-        hud_bg = pygame.Surface((WIDTH, 65), pygame.SRCALPHA)
-        pygame.draw.rect(hud_bg, (12, 18, 30, 230), hud_bg.get_rect(), border_bottom_left_radius=20, border_bottom_right_radius=20)
-        pygame.draw.rect(hud_bg, (0, 200, 255, 80), hud_bg.get_rect(), width=2, border_bottom_left_radius=20, border_bottom_right_radius=20)
+        # HUD background panel (top bar)
+        hud_bg = pygame.Surface((WIDTH, 68), pygame.SRCALPHA)
+        pygame.draw.rect(hud_bg, (8, 12, 22, 235), hud_bg.get_rect(),
+                         border_bottom_left_radius=22, border_bottom_right_radius=22)
+        pygame.draw.rect(hud_bg, (0, 200, 255, 70), hud_bg.get_rect(), width=2,
+                         border_bottom_left_radius=22, border_bottom_right_radius=22)
         screen.blit(hud_bg, (0, 0))
 
-        # Coin Display
-        screen.blit(coin_icon, (15, 12))
-        draw_text(f"{total_coins}", FONT_HUD, YELLOW, 65, 16, center=False)
+        # Scanline effect on HUD
+        for _sy in range(0, 68, 4):
+            sl = pygame.Surface((WIDTH, 1), pygame.SRCALPHA)
+            sl.fill((0, 0, 0, 14))
+            screen.blit(sl, (0, _sy))
 
-        # Current Level Display
-        env_names = {1: "GALAXY", 2: "NEBULA", 3: "BLACKHOLE"}
-        draw_text(f"{env_names.get(current_selected_env, 'GALAXY')} • LVL {current_level}", FONT_UI, CYAN, WIDTH // 2 - 20, 32)
+        # Corner brackets on HUD
+        draw_corner_brackets(screen, pygame.Rect(2, 2, WIDTH - 4, 64), NEON_CYAN, size=10, width=1)
 
-        # Pause Button in HUD
-        draw_button(screen, "||", FONT_SMALL, WHITE, pause_btn_rect, (40, 50, 70), is_h_pause, border_radius=10, outline_color=CYAN)
+        # ── Coin Display (left) ──
+        screen.blit(coin_icon, (14, 12))
+        draw_neon_text(screen, str(total_coins), FONT_HUD, NEON_GOLD, 70, 34, glow_radius=3)
 
-        # Player Health Bar (Right Side)
-        health_bar_bg = pygame.Rect(WIDTH - 250, 20, 180, 22)
-        pygame.draw.rect(screen, (35, 10, 15), health_bar_bg, border_radius=11)
-        pygame.draw.rect(screen, (70, 70, 90), health_bar_bg, 2, border_radius=11)
+        # ── Environment + Level Badge (center) ──
+        env_names_hud = {1: "GALAXY", 2: "NEBULA", 3: "BLACKHOLE"}
+        env_label = env_names_hud.get(current_selected_env, "GALAXY")
+        env_accent_hud = {1: NEON_BLUE, 2: NEON_PURPLE, 3: NEON_PINK}.get(current_selected_env, NEON_CYAN)
 
-        curr_hp_w = int(176 * (max(0, player_health) / unlocked_hp))
-        if curr_hp_w > 0:
-            hp_color = GREEN if player_health > unlocked_hp * 0.3 else RED
-            pygame.draw.rect(screen, hp_color, (WIDTH - 248, 22, curr_hp_w, 18), border_radius=9)
+        # Environment + Level text
+        hud_label = f"{env_label}  •  MISSION {current_level}"
+        draw_neon_text(screen, hud_label, FONT_UI, env_accent_hud, WIDTH // 2 - 20, 34, glow_radius=2)
 
-        draw_text(f"HP {int(max(0, player_health))}/{unlocked_hp}", FONT_HP, WHITE, WIDTH - 160, 31)
+        # ── Pause Button ──
+        draw_button(screen, "||", FONT_SMALL, WHITE, pause_btn_rect,
+                    (40, 50, 70), is_h_pause, border_radius=10, outline_color=NEON_CYAN)
 
-        # Boss Health Bar
+        # ── Player Health Bar (right side) — chromatic ──
+        hp_bar_rect = pygame.Rect(WIDTH - 212, 18, 188, 20)
+        hp_frac = max(0.0, player_health / max(1, unlocked_hp))
+        draw_chromatic_bar(screen, hp_bar_rect, hp_frac,
+                           label=f"HP {int(max(0, player_health))}/{unlocked_hp}",
+                           font=FONT_HP, border_radius=10, show_glow=True, pulse_t=ui_pulse_t)
+
+        # ── Boss Health Bar ──
         if boss_active and boss_death_timer == 0:
-            boss_hp_bg = pygame.Rect(WIDTH // 2 - 160, 75, 320, 20)
-            pygame.draw.rect(screen, (40, 10, 10), boss_hp_bg, border_radius=10)
-            pygame.draw.rect(screen, RED, boss_hp_bg, 2, border_radius=10)
+            boss_hp_bg = pygame.Rect(WIDTH // 2 - 175, 76, 350, 18)
+            boss_frac = max(0.0, boss_hp / max(1, boss_max_hp))
 
-            boss_hp_w = int(316 * (max(0, boss_hp) / boss_max_hp))
-            if boss_hp_w > 0:
-                pygame.draw.rect(screen, (255, 30, 80), (WIDTH // 2 - 158, 77, boss_hp_w, 16), border_radius=8)
-            draw_text(f"BOSS HP: {int(max(0, boss_hp))}/{boss_max_hp}", FONT_HP, WHITE, WIDTH // 2, 85)
+            # Phase markers on boss bar
+            for ph_frac in [0.5, 0.25]:
+                ph_x = boss_hp_bg.x + int(boss_hp_bg.width * ph_frac)
+                ph_surf = pygame.Surface((2, boss_hp_bg.height + 4), pygame.SRCALPHA)
+                ph_surf.fill((255, 255, 255, 180))
+                screen.blit(ph_surf, (ph_x, boss_hp_bg.y - 2))
 
-        # Mobile Slide Hint
+            draw_chromatic_bar(screen, boss_hp_bg, boss_frac,
+                               label=f"BOSS  {int(max(0, boss_hp))}/{boss_max_hp}",
+                               font=FONT_HP, border_radius=9, show_glow=True, pulse_t=ui_pulse_t,
+                               color_full=NEON_PINK, color_mid=(200, 50, 180), color_low=NEON_SCARLET)
+
+            # Phase indicators
+            ph_str = f"PHASE {boss_ai_phase}/3"
+            draw_text(ph_str, FONT_TINY, NEON_PINK, WIDTH // 2 + 185, 85)
+
+        # Mobile hint
         if control_type == 'MOBILE':
-            draw_text("SLIDE FINGER TO MOVE & FIRE", FONT_SMALL, (100, 120, 150), WIDTH // 2, HEIGHT - 20)
+            draw_text("SLIDE TO MOVE & FIRE", FONT_SMALL, (80, 100, 130), WIDTH // 2, HEIGHT - 18)
 
-        # Active Powerup Timers
-        y_offset_sh = 80
+        # ── Kill Progress Ring ──
+        boss_kill_reqs_hud = {1: 12, 2: 14, 3: 18, 4: 22, 5: 30,
+                              6: 38, 7: 46, 8: 56, 9: 70, 10: 82}
+        req_kills_hud = (min(222, 195 + (current_level - 30) * 3) if current_level >= 31
+                         else (min(222, 140 + (current_level - 20) * 5) if current_level >= 21
+                         else (min(140, 75 + (current_level - 10) * 6) if current_level >= 11
+                         else boss_kill_reqs_hud.get(current_level, 25))))
+        if not boss_active and not boss_arriving:
+            kill_frac = min(1.0, kill_count / max(1, req_kills_hud))
+            draw_kill_ring(screen, WIDTH // 2 - 20, 88, kill_frac, kill_count, req_kills_hud,
+                           color=env_accent_hud, radius=22, pulse_t=ui_pulse_t)
+
+        # ── Active Powerup Orbital Timers ──
+        orb_x = 18
         for s_key, s_val in skills.items():
             if s_val['active']:
-                rem_time = (s_val['timer'] - now) // 1000
-                if rem_time > 0:
-                    pill_rect = pygame.Rect(15, y_offset_sh, 140, 28)
-                    draw_panel(screen, pill_rect, alpha=200, bg_color=(20, 25, 35), border_color=s_val['color'], border_width=2, border_radius=8)
-                    draw_text(f"{s_val['label']} {rem_time}s", FONT_SMALL, s_val['color'], pill_rect.centerx, pill_rect.centery)
-                    y_offset_sh += 34
+                rem_ms  = s_val['timer'] - now
+                rem_frac = max(0.0, rem_ms / s_val['duration'])
+                if rem_frac > 0:
+                    draw_orbital_skill_timer(screen, orb_x + 24, 110,
+                                            rem_frac, s_val['label'][:2],
+                                            s_val['color'], ui_pulse_t)
+                    orb_x += 56
                 else:
                     s_val['active'] = False
 
@@ -2402,14 +2645,48 @@ while running:
         if kill_count >= req_kills and not boss_active and not boss_arriving and boss_defeated_timer == 0:
             boss_arriving = True
             boss_warning_timer = 180
+            
+            # 💥 MAP CLEAR: Clear all regular minions, bullets, and asteroids in a clean explosion
+            for e_arr in (fighters, elites, heavies):
+                for e in e_arr:
+                    for _ in range(8):
+                        particles.append([e['rect'].centerx, e['rect'].centery, random.uniform(-4, 4), random.uniform(-4, 4), random.randint(3, 6), random.choice(BLAST_COLORS)])
+                e_arr.clear()
+            for ast in list(asteroid_group):
+                for _ in range(8):
+                    particles.append([ast.rect.centerx, ast.rect.centery, random.uniform(-3, 3), random.uniform(-3, 3), random.randint(3, 6), (140, 140, 150)])
+                ast.kill()
+            enemy_bullets.clear()
+            expl_snd.play()
+            global_shake_intensity = 10.0
 
         if boss_arriving:
             boss_warning_timer -= 1
+            
+            # Smoothly glide player down to safety if they were high up on the map before the boundary solidifies
+            if player_rect.top < PLAYER_BOSS_MIN_Y:
+                player_rect.y += min(4, PLAYER_BOSS_MIN_Y - player_rect.top)
+
+            # 🚨 Dramatic Screen Blink / Alarm Strobe
             if (boss_warning_timer // 15) % 2 == 0:
-                draw_text("⚠ BOSS INCOMING ⚠", FONT_TITLE, RED, WIDTH // 2, HEIGHT // 2)
+                blink_surf = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                blink_surf.fill((255, 20, 20, 40))
+                screen.blit(blink_surf, (0, 0))
+                draw_text_shadow("! WARNING: BOSS APPROACHING !", FONT_TITLE, RED, WIDTH // 2, HEIGHT // 2 - 20, shadow_color=(80, 0, 0), offset=3)
+                draw_text("SECTOR CLEARED // DEFENSE BARRIER ENGAGED", FONT_SMALL, NEON_GOLD, WIDTH // 2, HEIGHT // 2 + 25)
+            else:
+                draw_text_shadow("! WARNING: BOSS APPROACHING !", FONT_TITLE, YELLOW, WIDTH // 2, HEIGHT // 2 - 20, shadow_color=(80, 50, 0), offset=2)
+                draw_text("SECTOR CLEARED // DEFENSE BARRIER ENGAGED", FONT_SMALL, WHITE, WIDTH // 2, HEIGHT // 2 + 25)
+
             if boss_warning_timer <= 0:
                 boss_arriving = False
                 boss_active = True
+                boss_ai_state = 'patrol'
+                boss_ai_timer = 0
+                boss_ai_phase = 1
+                boss_rect.centerx = WIDTH // 2
+                boss_rect.bottom = 0  # Enter from top of screen
+                player_rect.top = max(PLAYER_BOSS_MIN_Y, player_rect.top)
 
         if boss_defeated_timer > 0:
             boss_defeated_timer -= 1
@@ -2434,15 +2711,16 @@ while running:
         overlay.fill((0, 0, 0, 210))
         screen.blit(overlay, (0, 0))
 
-        box = pygame.Rect(160, 90, 480, 420)
-        draw_panel(screen, box, alpha=245, bg_color=(18, 22, 32), border_color=CYAN, border_width=3, border_radius=20)
-        draw_text("GAME PAUSED", FONT_MODAL_TITLE, CYAN, 400, 135)
-        draw_text("MISSION IN PROGRESS", FONT_SMALL, LIGHT_GRAY, 400, 170)
+        box = pygame.Rect(160, 85, 480, 430)
+        draw_neon_panel(screen, box, accent=NEON_CYAN, alpha=245, border_radius=20, bg=PANEL_BG)
+        draw_text_shadow("GAME PAUSED", FONT_MODAL_TITLE, NEON_CYAN, 400, 125, shadow_color=(0, 60, 100), offset=2)
+        draw_text("MISSION IN PROGRESS", FONT_TINY, LIGHT_GRAY, 400, 158)
+        draw_divider(screen, 195, 175, 605, NEON_CYAN, alpha=50)
 
-        btn_resume = pygame.Rect(200, 205, 400, 52)
-        btn_restart = pygame.Rect(200, 270, 400, 50)
-        btn_settings = pygame.Rect(200, 330, 400, 50)
-        btn_menu = pygame.Rect(200, 390, 400, 50)
+        btn_resume = pygame.Rect(200, 195, 400, 50)
+        btn_restart = pygame.Rect(200, 255, 400, 50)
+        btn_settings = pygame.Rect(200, 315, 400, 50)
+        btn_menu = pygame.Rect(200, 375, 400, 50)
 
         mx, my = pygame.mouse.get_pos()
         m_down = pygame.mouse.get_pressed()[0]
@@ -2464,10 +2742,10 @@ while running:
         is_h_s = is_h_s or focused_btn == 2
         is_h_m = is_h_m or focused_btn == 3
 
-        draw_button(screen, "RESUME MISSION", FONT_UI, WHITE, btn_resume, GREEN, is_h_p)
-        draw_button(screen, "RESTART LEVEL", FONT_UI, WHITE, btn_restart, ORANGE, is_h_r)
-        draw_button(screen, "SETTINGS", FONT_UI, WHITE, btn_settings, BLUE, is_h_s)
-        draw_button(screen, "ABORT TO MENU", FONT_UI, WHITE, btn_menu, RED, is_h_m)
+        draw_glowing_button(screen, ">  RESUME MISSION", FONT_UI, WHITE, btn_resume, NEON_GREEN, is_h_p, border_radius=14, pulse_t=ui_pulse_t)
+        draw_glowing_button(screen, "@  RESTART LEVEL", FONT_UI, WHITE, btn_restart, NEON_ORANGE, is_h_r, border_radius=14, pulse_t=ui_pulse_t)
+        draw_glowing_button(screen, ">  SETTINGS", FONT_UI, WHITE, btn_settings, NEON_CYAN, is_h_s, border_radius=14, pulse_t=ui_pulse_t)
+        draw_glowing_button(screen, "ESC  ABORT TO MENU", FONT_UI, WHITE, btn_menu, NEON_PINK, is_h_m, border_radius=14, pulse_t=ui_pulse_t)
 
         if m_c or key_enter or key_escape or key_p:
             if is_h_p or (key_escape or key_p):
@@ -2484,16 +2762,16 @@ while running:
                 click_cooldown = 12
                 m_c = False
                 key_enter = False
-            elif is_h_m and (m_c or key_enter):
+            elif is_h_r and (m_c or key_enter):
                 tap_snd.play()
-                warning_target = "MENU"
+                warning_target = "RESTART"
                 state = 15
                 click_cooldown = 12
                 m_c = False
                 key_enter = False
-            elif is_h_r and (m_c or key_enter):
+            elif is_h_m and (m_c or key_enter):
                 tap_snd.play()
-                warning_target = "RESTART"
+                warning_target = "MENU"
                 state = 15
                 click_cooldown = 12
                 m_c = False
@@ -2507,23 +2785,24 @@ while running:
         overlay.fill((0, 0, 0, 220))
         screen.blit(overlay, (0, 0))
 
-        w_box = pygame.Rect(140, 150, 520, 300)
-        draw_panel(screen, w_box, alpha=250, bg_color=(25, 15, 20), border_color=RED, border_width=3, border_radius=20)
+        w_box = pygame.Rect(140, 140, 520, 310)
+        draw_neon_panel(screen, w_box, accent=RED, alpha=250, border_radius=20, bg=PANEL_BG)
 
-        draw_text("ABORT MISSION?", FONT_MODAL_TITLE, RED, 400, 195)
+        draw_text_shadow("ABORT MISSION?", FONT_MODAL_TITLE, RED, 400, 185, shadow_color=(80, 0, 0), offset=2)
+        draw_divider(screen, 180, 215, 620, RED, alpha=50)
         draw_text("If you leave or restart now,", FONT_UI, WHITE, 400, 245)
-        draw_text("all unbanked level coins will be lost!", FONT_SMALL, YELLOW, 400, 280)
+        draw_text("all unbanked level coins will be lost!", FONT_SMALL, NEON_GOLD, 400, 280)
 
-        btn_w_back = pygame.Rect(180, 340, 200, 52)
-        btn_ok = pygame.Rect(420, 340, 200, 52)
+        btn_w_back = pygame.Rect(175, 340, 210, 54)
+        btn_ok     = pygame.Rect(415, 340, 210, 54)
 
         mx, my = pygame.mouse.get_pos()
         m_down = pygame.mouse.get_pressed()[0]
         is_h_back = btn_w_back.collidepoint(mx, my)
-        is_h_ok = btn_ok.collidepoint(mx, my)
+        is_h_ok   = btn_ok.collidepoint(mx, my)
 
-        draw_button(screen, "RESUME", FONT_UI, WHITE, btn_w_back, GREEN, is_h_back)
-        draw_button(screen, "CONFIRM LEAVE", FONT_UI, WHITE, btn_ok, RED, is_h_ok)
+        draw_glowing_button(screen, "RESUME", FONT_UI, WHITE, btn_w_back, NEON_GREEN, is_h_back, border_radius=14, pulse_t=ui_pulse_t)
+        draw_glowing_button(screen, "CONFIRM LEAVE", FONT_UI, WHITE, btn_ok, RED, is_h_ok, border_radius=14, pulse_t=ui_pulse_t)
 
         if m_c or key_escape or key_enter:
             if is_h_back or key_escape:
@@ -2560,30 +2839,35 @@ while running:
 
         # State 5: Dedicated Confirmation Modal for Revive
         if state == 5 and show_revive_confirm:
-            p_box = pygame.Rect(140, 110, 520, 380)
-            draw_panel(screen, p_box, alpha=250, bg_color=(25, 20, 30), border_color=YELLOW, border_width=3, border_radius=20)
+            p_box = pygame.Rect(130, 100, 540, 400)
+            draw_holographic_panel(screen, p_box, accent=NEON_GOLD, alpha=252, border_radius=22,
+                                   bg=(25, 20, 30), show_scanlines=True, show_corners=True, pulse_t=ui_pulse_t)
 
-            draw_text("CONFIRM REVIVE", FONT_MODAL_TITLE, YELLOW, 400, 160)
-            draw_text("RESTORE FULL COMBAT POWER", FONT_MODAL_SUB, CYAN, 400, 200)
+            draw_text_shadow("CONFIRM REVIVE", FONT_MODAL_TITLE, NEON_GOLD, 400, 145, shadow_color=(80, 50, 0), offset=2)
+            draw_text("RESTORE FULL COMBAT POWER", FONT_TINY, NEON_CYAN, 400, 185)
+            draw_divider(screen, 170, 202, 630, NEON_GOLD, alpha=50)
 
-            feat_card = pygame.Rect(170, 235, 460, 60)
+            feat_card = pygame.Rect(160, 220, 480, 64)
             pygame.draw.rect(screen, (35, 30, 45), feat_card, border_radius=12)
             pygame.draw.rect(screen, (80, 70, 100), feat_card, width=1, border_radius=12)
-            draw_text("Full Health + 3s Invulnerability Shield", FONT_SMALL, WHITE, 400, 255)
+            draw_text("* Full Armor Hull + 3s Invulnerability Barrier", FONT_SMALL, WHITE, 400, 242)
             
             c_price = get_revive_price(current_level, revives_done_this_level)
             can_afford = total_coins >= c_price
-            cost_color = GREEN if can_afford else RED
-            draw_text(f"Price: {c_price} Coins  |  Your Coins: {total_coins}", FONT_SMALL, cost_color, 400, 278)
+            cost_color = NEON_GREEN if can_afford else RED
+            draw_text(f"Price: $ {c_price} Coins  |  Bank: {total_coins} Coins", FONT_SMALL, cost_color, 400, 310)
 
-            b_back = pygame.Rect(180, 380, 200, 52)
-            b_buy = pygame.Rect(420, 380, 200, 52)
+            b_back = pygame.Rect(165, 380, 220, 54)
+            b_buy = pygame.Rect(415, 380, 220, 54)
 
             is_h_rbk = b_back.collidepoint(mx, my)
             is_h_rbuy = b_buy.collidepoint(mx, my)
 
-            draw_button(screen, "CANCEL", FONT_UI, WHITE, b_back, RED, is_h_rbk)
-            draw_button(screen, f"REVIVE ({c_price})", FONT_UI, BLACK if can_afford else WHITE, b_buy, GREEN if can_afford else DARK_GRAY, is_h_rbuy)
+            draw_plasma_button(screen, "CANCEL", FONT_UI, WHITE, b_back, (140, 20, 50), is_h_rbk,
+                               border_radius=14, accent=NEON_PINK, pulse_t=0)
+            draw_plasma_button(screen, f"REVIVE ({c_price})", FONT_UI, WHITE, b_buy,
+                               (0, 150, 60) if can_afford else (50, 50, 60), is_h_rbuy,
+                               border_radius=14, accent=NEON_GREEN if can_afford else MID_GRAY, pulse_t=ui_pulse_t)
 
             if m_c:
                 if is_h_rbk:
@@ -2600,6 +2884,9 @@ while running:
                     fighters.clear()
                     elites.clear()
                     heavies.clear()
+                    phantoms.clear()
+                    berserkers.clear()
+                    commanders.clear()
                     enemy_bullets.clear()
 
                     for _ in range(60):
@@ -2613,33 +2900,36 @@ while running:
 
         # Regular Victory Screen (State 4)
         elif state == 4:
-            box = pygame.Rect(140, 90, 520, 420)
-            draw_neon_panel(screen, box, accent=NEON_GREEN, alpha=250, border_radius=20, bg=(10,24,18))
+            box = pygame.Rect(130, 80, 540, 440)
+            draw_holographic_panel(screen, box, accent=NEON_GREEN, alpha=252, border_radius=22,
+                                   bg=(10, 24, 18), show_scanlines=True, show_corners=True, pulse_t=ui_pulse_t)
 
-            draw_text_shadow("🏆  VICTORY!", FONT_MODAL_TITLE, NEON_GREEN, 400, 135, shadow_color=(0,80,40), offset=2)
-            draw_text("SECTOR SECURED", FONT_TINY, NEON_CYAN, 400, 170)
-            draw_divider(screen, 180, 188, 620, NEON_GREEN, alpha=50)
+            draw_text_shadow("VICTORY:  VICTORY!", FONT_MODAL_TITLE, NEON_GREEN, 400, 125, shadow_color=(0, 80, 40), offset=2)
+            draw_text("SECTOR SECURED // THREAT NEUTRALIZED", FONT_TINY, NEON_CYAN, 400, 160)
+            draw_divider(screen, 170, 178, 630, NEON_GREEN, alpha=50)
 
             # Star Rating on Victory
             earned_stars = 3 if kill_count >= 20 else (2 if kill_count >= 10 else 1)
             star_icon = pygame.transform.scale(star_for_rating, (48, 48))
             start_x = 400 - ((earned_stars * 54) // 2) + 3
             for i in range(earned_stars):
-                screen.blit(star_icon, (start_x + (i * 54), 205))
+                screen.blit(star_icon, (start_x + (i * 54), 195))
 
-            stats_box = pygame.Rect(180, 275, 440, 50)
+            stats_box = pygame.Rect(170, 265, 460, 50)
             pygame.draw.rect(screen, PANEL_MID, stats_box, border_radius=12)
             pygame.draw.rect(screen, NEON_GREEN, stats_box, width=1, border_radius=12)
-            draw_text(f"🪙 +{level_coins} Coins Earned  |  ⚔ Kills: {kill_count}", FONT_SMALL, NEON_GOLD, 400, 300)
+            draw_text(f"$ +{level_coins} Coins Earned  |  VS Hostiles Eliminated: {kill_count}", FONT_SMALL, NEON_GOLD, 400, 290)
 
-            b_m = pygame.Rect(175, 360, 210, 56)
-            b_n = pygame.Rect(415, 360, 210, 56)
+            b_m = pygame.Rect(165, 350, 220, 56)
+            b_n = pygame.Rect(415, 350, 220, 56)
 
             is_h_m = b_m.collidepoint(mx, my)
             is_h_n = b_n.collidepoint(mx, my)
 
-            draw_glowing_button(screen, "← MAIN MENU", FONT_UI, WHITE, b_m, NEON_BLUE, is_h_m, pulse_t=ui_pulse_t)
-            draw_glowing_button(screen, "NEXT LEVEL ➔", FONT_UI, WHITE, b_n, NEON_GREEN, is_h_n, pulse_t=ui_pulse_t)
+            draw_plasma_button(screen, "< MAIN MENU", FONT_UI, WHITE, b_m, (0, 70, 160), is_h_m,
+                               border_radius=16, accent=NEON_BLUE, pulse_t=ui_pulse_t)
+            draw_plasma_button(screen, "NEXT LEVEL >", FONT_UI, WHITE, b_n, (0, 150, 60), is_h_n,
+                               border_radius=16, accent=NEON_GREEN, pulse_t=ui_pulse_t)
 
             if m_c or key_enter or key_escape or key_left:
                 if is_h_m or key_escape or key_left:
@@ -2664,21 +2954,22 @@ while running:
 
         # Regular Game Over Screen (State 5)
         elif state == 5:
-            box = pygame.Rect(130, 80, 540, 450)
-            draw_neon_panel(screen, box, accent=NEON_PINK, alpha=250, border_radius=20, bg=(28,10,15))
+            box = pygame.Rect(120, 70, 560, 465)
+            draw_holographic_panel(screen, box, accent=NEON_PINK, alpha=252, border_radius=22,
+                                   bg=(28, 10, 15), show_scanlines=True, show_corners=True, pulse_t=ui_pulse_t)
 
-            draw_text_shadow("💀  MISSION FAILED", FONT_MODAL_TITLE, NEON_PINK, 400, 125, shadow_color=(80,0,0), offset=2)
-            draw_text("SHIP DESTROYED IN COMBAT", FONT_TINY, LIGHT_GRAY, 400, 160)
-            draw_divider(screen, 170, 178, 630, NEON_PINK, alpha=50)
+            draw_text_shadow("FAILED:  MISSION FAILED", FONT_MODAL_TITLE, NEON_PINK, 400, 115, shadow_color=(80, 0, 0), offset=2)
+            draw_text("STARSHIP DESTROYED IN COMBAT", FONT_TINY, LIGHT_GRAY, 400, 150)
+            draw_divider(screen, 160, 168, 640, NEON_PINK, alpha=50)
 
-            stats_box = pygame.Rect(170, 195, 460, 48)
+            stats_box = pygame.Rect(160, 185, 480, 48)
             pygame.draw.rect(screen, PANEL_MID, stats_box, border_radius=12)
             pygame.draw.rect(screen, NEON_PINK, stats_box, width=1, border_radius=12)
-            draw_text(f"🪙 Coins: +{level_coins}  |  ⚔ Enemies Down: {kill_count}", FONT_SMALL, NEON_GOLD, 400, 219)
+            draw_text(f"$ Coins: +{level_coins}  |  VS Enemies Down: {kill_count}", FONT_SMALL, NEON_GOLD, 400, 209)
 
-            rev_b = pygame.Rect(190, 265, 420, 58)
-            b_n   = pygame.Rect(190, 335, 420, 52)
-            b_m   = pygame.Rect(190, 395, 420, 52)
+            rev_b = pygame.Rect(180, 255, 440, 58)
+            b_n   = pygame.Rect(180, 325, 440, 50)
+            b_m   = pygame.Rect(180, 385, 440, 50)
 
             is_h_rev = rev_b.collidepoint(mx, my)
             is_h_n   = b_n.collidepoint(mx, my)
@@ -2695,9 +2986,12 @@ while running:
             is_h_n = is_h_n or focused_btn == 1
             is_h_m = is_h_m or focused_btn == 2
 
-            draw_glowing_button(screen, "✨  REVIVE STARSHIP", FONT_UI, WHITE, rev_b, NEON_GOLD, is_h_rev, pulse_t=ui_pulse_t)
-            draw_glowing_button(screen, "↻  RETRY MISSION", FONT_UI, WHITE, b_n, NEON_ORANGE, is_h_n, pulse_t=ui_pulse_t)
-            draw_glowing_button(screen, "← MAIN MENU", FONT_UI, WHITE, b_m, NEON_BLUE, is_h_m, pulse_t=ui_pulse_t)
+            draw_plasma_button(screen, "*  REVIVE STARSHIP", FONT_UI, WHITE, rev_b, (140, 100, 0), is_h_rev,
+                               border_radius=16, accent=NEON_GOLD, pulse_t=ui_pulse_t)
+            draw_plasma_button(screen, "@  RETRY MISSION", FONT_UI, WHITE, b_n, (140, 60, 0), is_h_n,
+                               border_radius=14, accent=NEON_ORANGE, pulse_t=ui_pulse_t)
+            draw_plasma_button(screen, "< MAIN MENU", FONT_UI, WHITE, b_m, (0, 70, 150), is_h_m,
+                               border_radius=14, accent=NEON_BLUE, pulse_t=ui_pulse_t)
 
             if m_c or key_enter or key_escape or key_r:
                 if is_h_rev and (m_c or (key_enter and focused_btn == 0)):
@@ -2726,7 +3020,7 @@ while running:
                     key_escape = False
 
     # Apply Global Screen Shake
-    if screen_shake_enabled and global_shake_intensity > 0.5:
+    if screen_shake_enabled and visual_quality == 'high' and global_shake_intensity > 0.5:
         shake_x = random.uniform(-global_shake_intensity, global_shake_intensity)
         shake_y = random.uniform(-global_shake_intensity, global_shake_intensity)
         shake_surf = screen.copy()
@@ -2749,5 +3043,8 @@ while running:
         pygame.draw.rect(screen, fps_color, fps_bg, width=1, border_radius=6)
         screen.blit(fps_text, fps_text.get_rect(center=fps_bg.center))
 
+    if state != prev_state:
+        ignore_mouse_until_released = True
+        
     pygame.display.flip()
     clock.tick(60)

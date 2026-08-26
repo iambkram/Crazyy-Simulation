@@ -2,6 +2,7 @@ import pygame
 import math
 import random
 from settings import *
+from vfx import draw_neon_vignette
 
 class MenuBattleSimulation:
     """
@@ -430,16 +431,24 @@ class MenuBattleSimulation:
             e_rect = e['img'].get_rect(center=(int(e['x']), int(e['y'])))
             screen.blit(e['img'], e_rect)
 
-        # --- C. Render Lasers / Bullets ---
-        # Player Bullets (Glowing Neon Cyan with white core)
+        # --- C. Render Lasers / Bullets (upgraded neon glow) ---
+        # Player Bullets — Neon cyan beam with white hot core + glow halo
         for pb in self.player_bullets:
-            pygame.draw.rect(screen, NEON_CYAN, pb['rect'], border_radius=3)
-            pygame.draw.rect(screen, WHITE, pb['rect'].inflate(-2, -4), border_radius=2)
+            r = pb['rect']
+            halo = pygame.Surface((r.width + 8, r.height + 8), pygame.SRCALPHA)
+            pygame.draw.rect(halo, (*NEON_CYAN, 50), halo.get_rect(), border_radius=r.width)
+            screen.blit(halo, (r.x - 4, r.y - 4))
+            pygame.draw.rect(screen, NEON_CYAN, r, border_radius=3)
+            pygame.draw.rect(screen, WHITE, r.inflate(-2, -4), border_radius=2)
 
-        # Enemy Bullets
+        # Enemy Bullets — colored glow + body
         for eb in self.enemy_bullets:
-            pygame.draw.rect(screen, eb['col'], eb['rect'], border_radius=3)
-            pygame.draw.rect(screen, WHITE, eb['rect'].inflate(-2, -4), border_radius=2)
+            r = eb['rect']
+            halo = pygame.Surface((r.width + 6, r.height + 6), pygame.SRCALPHA)
+            pygame.draw.rect(halo, (*eb['col'], 40), halo.get_rect(), border_radius=r.width)
+            screen.blit(halo, (r.x - 3, r.y - 3))
+            pygame.draw.rect(screen, eb['col'], r, border_radius=3)
+            pygame.draw.rect(screen, WHITE, r.inflate(-2, -4), border_radius=2)
 
         # --- D. Render Particles ---
         for p in self.particles:
@@ -462,3 +471,7 @@ class MenuBattleSimulation:
 
         # --- F. Frosted Menu Tint (Keeps text & buttons perfectly readable) ---
         screen.blit(self.tint_overlay, (0, 0))
+
+        # --- G. Neon edge vignette for cinematic depth ---
+        draw_neon_vignette(screen, color=(0, 5, 20), alpha_edge=70, steps=4)
+
