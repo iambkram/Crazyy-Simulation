@@ -1122,19 +1122,15 @@ while running:
 
             activated = (m_c and is_hover) or (key_enter and is_focused)
             if activated and target != "locked":
+                tap_snd.play()
                 if txt.endswith("QUIT"):
                     running = False
-                elif ("CAMPAIGN" in txt or "STORE" in txt) :
-                    tap_snd.play()
-                    win_snd_played = False
-                    loose_snd_played = False
-                    show_settings_warning = True
-                    click_cooldown = 12
-                    m_c = False
                 else:
-                    tap_snd.play()
                     if target == 9:
                         settings_from_pause = False
+                    elif target == 20:
+                        win_snd_played = False
+                        loose_snd_played = False
                     state = target
                     click_cooldown = 12
                     m_c = False

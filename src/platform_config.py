@@ -3,7 +3,7 @@
 _PROFILE = {
     "name": "pc",
     "default_control_type": "PC",
-    "force_control_type": False,
+    "force_control_type": True,
     "start_fullscreen": False,
     "resizable": True,
     "use_scaled": True,
@@ -14,7 +14,7 @@ def configure_pc():
     _PROFILE.update({
         "name": "pc",
         "default_control_type": "PC",
-        "force_control_type": False,
+        "force_control_type": True,
         "start_fullscreen": False,
         "resizable": True,
         "use_scaled": True,

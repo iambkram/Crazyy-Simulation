@@ -8,10 +8,21 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(ROOT, "src"))
-sys.path.insert(0, ROOT)
+SRC_DIR = os.path.join(ROOT, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
-from platform_config import configure_pc
+try:
+    from src.platform_config import configure_pc
+except ImportError:
+    from platform_config import configure_pc
 
 configure_pc()
-import game  # noqa: F401  — shared engine; starts the PC game loop
+
+try:
+    import src.game  # noqa: F401  — shared engine; starts the PC game loop
+except ImportError:
+    import game  # noqa: F401
+

@@ -1,161 +1,105 @@
-import pygame
+﻿import pygame
 import math
 from assets import (draw_menu_starfield, draw_text, draw_text_shadow,
                     draw_holographic_panel, draw_neon_panel, draw_divider,
-                    draw_plasma_button, draw_glowing_button, draw_badge, draw_corner_brackets,
-                    FONT_MSG, FONT_UI, FONT_SMALL, FONT_TINY, FONT_HUD,
+                    draw_plasma_button, draw_glowing_button, draw_badge,
+                    FONT_MSG, FONT_UI, FONT_SMALL, FONT_TINY, FONT_HUD, FONT_MODAL_TITLE,
                     NEON_CYAN, NEON_GOLD, NEON_GREEN, NEON_ORANGE, NEON_PINK, NEON_BLUE,
-                    RED, WHITE, LIGHT_GRAY, MID_GRAY, PANEL_BG, PANEL_MID, DARK_GRAY,
-                    NEON_TEAL, NEON_AMBER)
+                    RED, WHITE, LIGHT_GRAY, MID_GRAY, PANEL_BG, PANEL_MID, NEON_TEAL, NEON_AMBER)
 from settings import WIDTH, HEIGHT
-from cloud_sync import current_account_type
+from platform_config import is_mobile, is_pc
+import cloud_sync
 
 
 def _draw_ios_toggle(screen, cx, cy, active, accent_on=NEON_GREEN, pulse_t=0.0):
-    """Draw an iOS-style animated pill toggle switch."""
-    track_w, track_h = 52, 26
-    track_rect = pygame.Rect(cx - track_w // 2, cy - track_h // 2, track_w, track_h)
+    """Draw a smooth pill-shaped iOS-style toggle switch."""
+    w, h = 48, 26
+    rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
+    bg_col = accent_on if active else (40, 48, 65)
 
-    # Track
-    track_col = (*accent_on, 200) if active else (50, 55, 75, 200)
-    track_surf = pygame.Surface((track_w, track_h), pygame.SRCALPHA)
-    pygame.draw.rect(track_surf, track_col, track_surf.get_rect(), border_radius=13)
-    screen.blit(track_surf, track_rect.topleft)
+    track = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.rect(track, (*bg_col, 220), track.get_rect(), border_radius=h // 2)
+    border_col = accent_on if active else (70, 80, 105)
+    pygame.draw.rect(track, border_col, track.get_rect(), width=2, border_radius=h // 2)
+    screen.blit(track, rect.topleft)
 
-    # Thumb
-    thumb_x = track_rect.x + (track_w - 22) if active else track_rect.x + 2
-    thumb_rect = pygame.Rect(thumb_x, cy - 11, 22, 22)
-    thumb_surf = pygame.Surface((22, 22), pygame.SRCALPHA)
+    knob_r = (h - 6) // 2
+    knob_x = (rect.right - 4 - knob_r) if active else (rect.left + 4 + knob_r)
+    knob_y = rect.centery
 
-    # Glow on active
     if active:
-        gsurf = pygame.Surface((30, 30), pygame.SRCALPHA)
-        ga = int(60 + 40 * math.sin(pulse_t * 4))
-        pygame.draw.circle(gsurf, (*accent_on, ga), (15, 15), 15)
-        screen.blit(gsurf, (thumb_x - 4, cy - 15))
+        glow_s = pygame.Surface((knob_r * 4, knob_r * 4), pygame.SRCALPHA)
+        pygame.draw.circle(glow_s, (*accent_on, 60), (knob_r * 2, knob_r * 2), knob_r * 2)
+        screen.blit(glow_s, (knob_x - knob_r * 2, knob_y - knob_r * 2))
 
-    pygame.draw.circle(thumb_surf, WHITE, (11, 11), 11)
-    pygame.draw.circle(thumb_surf, (200, 210, 220), (11, 11), 11, 1)
-    screen.blit(thumb_surf, thumb_rect.topleft)
-
-    return track_rect
+    pygame.draw.circle(screen, WHITE, (knob_x, knob_y), knob_r)
+    pygame.draw.circle(screen, (200, 210, 225), (knob_x, knob_y), knob_r, 1)
+    return rect
 
 
-def _draw_neon_slider(screen, sx, sy, sw, val, label, accent=NEON_CYAN, mx=0, my=0, m_down=False):
-    """Draw a neon-styled horizontal slider with draggable thumb."""
-    s_rect = pygame.Rect(sx, sy, sw, 10)
+def _draw_neon_slider(screen, x, y, width, value, label, accent=NEON_CYAN, mx=0, my=0, m_down=False):
+    """Draw an audio volume slider."""
+    h = 8
+    track_rect = pygame.Rect(x, y + 16, width, h)
+    thumb_x = x + int(width * value)
+    thumb_r = 10
+    thumb_rect = pygame.Rect(thumb_x - thumb_r, y + 16 + h // 2 - thumb_r, thumb_r * 2, thumb_r * 2)
 
-    # Track background
-    track_bg = pygame.Surface((sw, 10), pygame.SRCALPHA)
-    pygame.draw.rect(track_bg, (25, 30, 45, 200), track_bg.get_rect(), border_radius=5)
-    screen.blit(track_bg, s_rect.topleft)
+    active_rect = track_rect.inflate(16, 24)
+    if m_down and active_rect.collidepoint(mx, my):
+        value = max(0.0, min(1.0, (mx - x) / width))
+        thumb_x = x + int(width * value)
+        thumb_rect.centerx = thumb_x
 
-    # Filled portion
-    fill_w = max(0, int(sw * val))
+    draw_text(label, FONT_TINY, LIGHT_GRAY, x, y - 2, center=False)
+    draw_text(f"{int(value * 100)}%", FONT_TINY, accent, x + width, y - 2, center=False)
+
+    pygame.draw.rect(screen, (25, 30, 45), track_rect, border_radius=h // 2)
+    pygame.draw.rect(screen, (50, 60, 80), track_rect, width=1, border_radius=h // 2)
+
+    fill_w = int(width * value)
     if fill_w > 0:
-        fill_surf = pygame.Surface((fill_w, 10), pygame.SRCALPHA)
-        for px in range(fill_w):
-            t = px / max(1, fill_w - 1)
-            r = int(0 + accent[0] * t)
-            g = int(accent[1] * (0.5 + 0.5 * t))
-            b = int(accent[2])
-            pygame.draw.line(fill_surf, (r, g, b, 220), (px, 0), (px, 10))
-        screen.blit(fill_surf, s_rect.topleft)
+        fill_r = pygame.Rect(x, y + 16, fill_w, h)
+        pygame.draw.rect(screen, accent, fill_r, border_radius=h // 2)
 
-    # Thumb
-    handle_x = s_rect.x + fill_w
-    is_hover = math.hypot(mx - handle_x, my - s_rect.centery) < 16
-    thumb_r = 9 if is_hover else 7
-    thumb_surf = pygame.Surface((thumb_r * 2 + 4, thumb_r * 2 + 4), pygame.SRCALPHA)
-    pygame.draw.circle(thumb_surf, (*accent, 200), (thumb_r + 2, thumb_r + 2), thumb_r)
-    pygame.draw.circle(thumb_surf, WHITE, (thumb_r + 2, thumb_r + 2), thumb_r - 3)
-    screen.blit(thumb_surf, (handle_x - thumb_r - 2, s_rect.centery - thumb_r - 2))
-
-    # Label + percentage
-    draw_text(label, FONT_TINY, LIGHT_GRAY, sx, sy - 14, center=False)
-    draw_text(f"{int(val * 100)}%", FONT_TINY, accent, sx + sw + 26, s_rect.centery)
-
-    new_val = val
-    if m_down and (s_rect.inflate(0, 20).collidepoint(mx, my) or is_hover):
-        new_val = max(0.0, min(1.0, (mx - s_rect.x) / s_rect.width))
-
-    return new_val, s_rect
+    pygame.draw.circle(screen, WHITE, (thumb_x, y + 16 + h // 2), thumb_r)
+    pygame.draw.circle(screen, accent, (thumb_x, y + 16 + h // 2), thumb_r, 2)
+    return value, track_rect
 
 
 def render_settings(screen, mx, my, m_c, m_down, key_escape, tap_snd, ui_pulse_t, menu_bg,
                     control_type, visual_quality, show_damage_enabled, auto_fire_enabled,
                     screen_shake_enabled, show_fps, settings_from_pause, music_vol, sfx_vol, pulse_a):
-    """Premium settings screen with iOS toggles and neon sliders."""
+    """Clean, non-overlapping settings screen without redundant control mode selection."""
     screen.blit(menu_bg, (0, 0))
     overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
     overlay.fill((0, 0, 20, 195))
     screen.blit(overlay, (0, 0))
     draw_menu_starfield(screen)
 
-    draw_text_shadow("GAME SETTINGS", FONT_MSG, NEON_CYAN, 400, 44, shadow_color=(0, 80, 120), offset=2)
-    draw_divider(screen, 80, 72, 720, NEON_CYAN, alpha=50)
+    # ── Header ──────────────────────────────────────────────
+    draw_text_shadow("GAME SETTINGS", FONT_MSG, NEON_CYAN, 400, 40, shadow_color=(0, 80, 120), offset=2)
+    platform_tag = "PC EDITION" if is_pc() else "MOBILE EDITION"
+    draw_text(f"// COSMIC CIVIL WAR  ·  {platform_tag} //", FONT_TINY, (100, 160, 220), 400, 68)
+    draw_divider(screen, 80, 82, 720, NEON_CYAN, alpha=50)
 
     next_state = 9
 
-    # ── Control Mode Cards ──────────────────────────────────
-    draw_text("CONTROL MODE", FONT_TINY, (120, 150, 190), 90, 90, center=False)
-
-    btn_pc  = pygame.Rect(90, 105, 270, 82)
-    btn_mob = pygame.Rect(330, 105, 270, 82)
-
-    is_h_pc  = btn_pc.collidepoint(mx, my)
-    is_h_mob = btn_mob.collidepoint(mx, my)
-
-    pc_active  = control_type == 'PC'
-    mob_active = control_type == 'MOBILE'
-
-    pc_accent  = NEON_GREEN if pc_active else (NEON_TEAL if is_h_pc else (60, 70, 90))
-    mob_accent = NEON_ORANGE if mob_active else (NEON_AMBER if is_h_mob else (60, 70, 90))
-
-    draw_holographic_panel(screen, btn_pc,  accent=pc_accent,  alpha=225, border_radius=14,
-                           border_width=3 if pc_active else 2,
-                           show_corners=pc_active, pulse_t=ui_pulse_t)
-    draw_holographic_panel(screen, btn_mob, accent=mob_accent, alpha=225, border_radius=14,
-                           border_width=3 if mob_active else 2,
-                           show_corners=mob_active, pulse_t=ui_pulse_t)
-
-    draw_text("⌨  PC LAYOUT", FONT_UI, WHITE if pc_active else LIGHT_GRAY,
-              btn_pc.centerx, btn_pc.centery - 12)
-    draw_text("WASD + Mouse / Space", FONT_TINY, pc_accent,
-              btn_pc.centerx, btn_pc.centery + 14)
-
-    draw_text("📱  MOBILE LAYOUT", FONT_UI, WHITE if mob_active else LIGHT_GRAY,
-              btn_mob.centerx, btn_mob.centery - 12)
-    draw_text("Touch Slide & Tap", FONT_TINY, mob_accent,
-              btn_mob.centerx, btn_mob.centery + 14)
-
-    if m_c:
-        if is_h_pc:
-            tap_snd.play()
-            control_type = 'PC'
-            m_c = False
-        elif is_h_mob:
-            tap_snd.play()
-            control_type = 'MOBILE'
-            m_c = False
-
-    draw_divider(screen, 90, 200, 710, NEON_CYAN, alpha=30)
-
-    # ── Visual Quality ──────────────────────────────────────
-    draw_text("VISUAL QUALITY", FONT_TINY, (120, 150, 190), 90, 108, center=False)
+    # ── 1. Visual Quality ──────────────────────────────────
+    draw_text("VISUAL QUALITY", FONT_TINY, (120, 150, 190), 90, 96, center=False)
 
     quality_btns = [
-        ("PERFORMANCE", 'low',    NEON_PINK,   pygame.Rect(90,  122, 152, 36)),
-        ("BALANCED",    'medium', NEON_GOLD,   pygame.Rect(254, 122, 152, 36)),
-        ("CINEMATIC",   'high',   NEON_CYAN,   pygame.Rect(418, 122, 152, 36)),
+        ("PERFORMANCE", 'low',    NEON_PINK,   pygame.Rect(90,  116, 180, 36)),
+        ("BALANCED",    'medium', NEON_GOLD,   pygame.Rect(290, 116, 180, 36)),
+        ("CINEMATIC",   'high',   NEON_CYAN,   pygame.Rect(490, 116, 180, 36)),
     ]
     for (qtxt, qval, qcol, qrect) in quality_btns:
         is_h_q = qrect.collidepoint(mx, my)
-        active  = (visual_quality == qval)
+        active = (visual_quality == qval)
         bg_surf = pygame.Surface((qrect.width, qrect.height), pygame.SRCALPHA)
         pygame.draw.rect(bg_surf, (*qcol, 60 if active else 20), bg_surf.get_rect(), border_radius=10)
         screen.blit(bg_surf, qrect.topleft)
-        bw = 2 if not active else 3
+        bw = 3 if active else 2
         pygame.draw.rect(screen, qcol if active else (60, 70, 90), qrect, width=bw, border_radius=10)
         draw_text(qtxt, FONT_TINY, WHITE if active else LIGHT_GRAY, qrect.centerx, qrect.centery)
         if m_c and is_h_q:
@@ -163,98 +107,100 @@ def render_settings(screen, mx, my, m_c, m_down, key_escape, tap_snd, ui_pulse_t
             visual_quality = qval
             m_c = False
 
-    draw_divider(screen, 90, 172, 710, NEON_CYAN, alpha=30)
+    draw_divider(screen, 90, 168, 710, NEON_CYAN, alpha=30)
 
-    # ── iOS-style Toggle Switches ────────────────────────────
-    draw_text("GAMEPLAY OPTIONS", FONT_TINY, (120, 150, 190), 90, 188, center=False)
+    # ── 2. Gameplay Options ────────────────────────────────
+    draw_text("GAMEPLAY OPTIONS", FONT_TINY, (120, 150, 190), 90, 182, center=False)
 
     toggles = [
-        ("DAMAGE NUMBERS",  show_damage_enabled,  NEON_GOLD,   90,  218),
-        ("AUTO-FIRE",       auto_fire_enabled,     NEON_GREEN,  340, 218),
-        ("SCREEN SHAKE",    screen_shake_enabled,  NEON_PINK,   90,  264),
-        ("SHOW FPS",        show_fps,              NEON_CYAN,   340, 264),
+        ("DAMAGE NUMBERS",  show_damage_enabled,  NEON_GOLD,   90,  210),
+        ("AUTO-FIRE",       auto_fire_enabled,     NEON_GREEN,  410, 210),
+        ("SCREEN SHAKE",    screen_shake_enabled,  NEON_PINK,   90,  260),
+        ("SHOW FPS",        show_fps,              NEON_CYAN,   410, 260),
     ]
     toggle_states = [show_damage_enabled, auto_fire_enabled, screen_shake_enabled, show_fps]
 
     for i, (tlabel, tval, taccent, tx, ty) in enumerate(toggles):
-        # Row background
-        row = pygame.Rect(tx - 4, ty - 12, 240, 42)
+        row = pygame.Rect(tx - 4, ty - 12, 280, 42)
         row_surf = pygame.Surface((row.width, row.height), pygame.SRCALPHA)
         pygame.draw.rect(row_surf, (*PANEL_MID, 160), row_surf.get_rect(), border_radius=10)
         screen.blit(row_surf, row.topleft)
 
-        draw_text(tlabel, FONT_TINY, LIGHT_GRAY, tx + 8, ty + 9, center=False)
+        draw_text(tlabel, FONT_TINY, LIGHT_GRAY, tx + 12, ty + 9, center=False)
 
-        toggle_cx = tx + 200
-        tr = _draw_ios_toggle(screen, toggle_cx, ty + 9, tval, accent_on=taccent, pulse_t=ui_pulse_t)
+        toggle_cx = tx + 240
+        _draw_ios_toggle(screen, toggle_cx, ty + 9, tval, accent_on=taccent, pulse_t=ui_pulse_t)
 
         if m_c and row.collidepoint(mx, my):
             tap_snd.play()
             toggle_states[i] = not tval
             m_c = False
 
-    show_damage_enabled = toggle_states[0]
-    auto_fire_enabled   = toggle_states[1]
-    screen_shake_enabled= toggle_states[2]
-    show_fps            = toggle_states[3]
+    show_damage_enabled  = toggle_states[0]
+    auto_fire_enabled    = toggle_states[1]
+    screen_shake_enabled = toggle_states[2]
+    show_fps             = toggle_states[3]
 
-    draw_divider(screen, 90, 312, 710, NEON_CYAN, alpha=30)
+    draw_divider(screen, 90, 316, 710, NEON_CYAN, alpha=30)
 
-    # ── Neon Volume Sliders ──────────────────────────────────
-    draw_text("AUDIO", FONT_TINY, (120, 150, 190), 90, 330, center=False)
+    # ── 3. Audio ───────────────────────────────────────────
+    draw_text("AUDIO CONFIGURATION", FONT_TINY, (120, 150, 190), 90, 330, center=False)
 
-    music_vol, _ = _draw_neon_slider(screen, 90,  352, 240, music_vol,
+    music_vol, _ = _draw_neon_slider(screen, 90,  355, 270, music_vol,
                                      "MUSIC VOLUME", accent=NEON_TEAL, mx=mx, my=my, m_down=m_down)
-    sfx_vol, _   = _draw_neon_slider(screen, 400, 352, 240, sfx_vol,
+    sfx_vol, _   = _draw_neon_slider(screen, 410, 355, 270, sfx_vol,
                                      "SFX VOLUME",   accent=NEON_AMBER, mx=mx, my=my, m_down=m_down)
 
     if m_down:
         pygame.mixer.music.set_volume(music_vol)
 
-    draw_divider(screen, 90, 384, 710, NEON_CYAN, alpha=30)
+    draw_divider(screen, 90, 425, 710, NEON_CYAN, alpha=30)
 
-    # ── Account & System Buttons ─────────────────────────────
-    btn_bind = pygame.Rect(90, 400, 230, 44)
+    # ── 4. Account & Navigation Buttons ────────────────────
+    btn_bind = pygame.Rect(90, 455, 210, 46)
     is_h_bind = btn_bind.collidepoint(mx, my)
 
+    current_account_type = "guest" if not cloud_sync.current_username else "cloud"
     if current_account_type == "guest":
-        draw_plasma_button(screen, "🔗 BIND TO GOOGLE", FONT_SMALL, WHITE, btn_bind,
-                          (140, 100, 0), is_h_bind, pulse_t=ui_pulse_t, accent=NEON_GOLD, border_radius=12)
+        draw_plasma_button(screen, "BIND GOOGLE", FONT_SMALL, WHITE, btn_bind,
+                           (140, 100, 0), is_h_bind, pulse_t=ui_pulse_t, accent=NEON_GOLD, border_radius=12)
         if m_c and is_h_bind:
             tap_snd.play()
-            import cloud_sync
             cloud_sync.login_google_async()
-            next_state = 11
+            next_state = 11 if is_pc() else 12
             m_c = False
     else:
-        draw_plasma_button(screen, "X LOGOUT", FONT_SMALL, WHITE, btn_bind,
-                          (120, 20, 30), is_h_bind, pulse_t=0, accent=NEON_PINK, border_radius=12)
+        draw_plasma_button(screen, "LOGOUT", FONT_SMALL, WHITE, btn_bind,
+                           (120, 20, 30), is_h_bind, pulse_t=0, accent=NEON_PINK, border_radius=12)
         if m_c and is_h_bind:
             tap_snd.play()
-            import cloud_sync
             cloud_sync.clear_local_session()
             next_state = -3
             m_c = False
 
-    btn_win = pygame.Rect(340, 400, 200, 44)
-    is_h_win = btn_win.collidepoint(mx, my)
-    draw_plasma_button(screen, "VIEW CONTROLS", FONT_SMALL, WHITE, btn_win,
-                       (0, 60, 150), is_h_win, pulse_t=0, accent=NEON_CYAN, border_radius=12)
-    if m_c and is_h_win:
+    # VIEW CONTROLS BUTTON
+    btn_ctrl = pygame.Rect(320, 455, 200, 46)
+    is_h_ctrl = btn_ctrl.collidepoint(mx, my)
+    draw_plasma_button(screen, "VIEW CONTROLS", FONT_SMALL, WHITE, btn_ctrl,
+                       (0, 60, 150), is_h_ctrl, pulse_t=0, accent=NEON_CYAN, border_radius=12)
+    if m_c and is_h_ctrl:
         tap_snd.play()
-        next_state = 11
+        next_state = 12 if is_mobile() else 11
         m_c = False
 
-    btn_back = pygame.Rect(554, 400, 156, 44)
+    # BACK BUTTON
+    btn_back = pygame.Rect(540, 455, 170, 46)
     is_h_back = btn_back.collidepoint(mx, my)
     draw_plasma_button(screen, "< BACK", FONT_SMALL, WHITE, btn_back,
                        (120, 20, 50), is_h_back, pulse_t=0, accent=NEON_PINK, border_radius=12)
 
-    if m_c or key_escape:
-        if (is_h_back and m_c) or key_escape:
-            tap_snd.play()
-            next_state = 3 if settings_from_pause else 0
-            m_c = False
+    if (m_c and is_h_back) or key_escape:
+        tap_snd.play()
+        next_state = 3 if settings_from_pause else 0
+        m_c = False
+
+    # Safe enforcement of control_type based on platform
+    control_type = "MOBILE" if is_mobile() else "PC"
 
     return (next_state, control_type, visual_quality, show_damage_enabled,
             auto_fire_enabled, screen_shake_enabled, show_fps, music_vol, sfx_vol, m_c)
