@@ -141,15 +141,25 @@ pip install -r requirements.txt
 # 3. Configure environment variables (Optional for local-only play)
 cp .env.example .env
 
-# 4. Launch the game
-python src/main.py
+# 4. Launch (PC)
+python main_pc.py
+
+# Optional: preview the mobile control layout on desktop
+python main_mobile.py
+```
+
+### Build Android APK (Buildozer)
+Requires a Linux host (or WSL) with Android SDK/NDK. Root `main.py` is the mobile entry Buildozer expects.
+```bash
+pip install buildozer
+buildozer android debug
 ```
 
 ### Build Standalone Executables (PyInstaller)
 To compile the standalone Windows executable and installer wizard:
 ```bash
 # Build main game binary
-pyinstaller --noconfirm --clean --onefile --windowed --icon=icon.ico --name "Crazyy-Simulation" --add-data="game_assets;game_assets" --add-data="icon.ico;." src/main.py
+pyinstaller --noconfirm --clean Crazyy-Simulation.spec
 
 # Build setup wizard installer
 pyinstaller --noconfirm --clean --onefile --windowed --icon=icon.ico --name "setup" --add-data="Crazyy-Simulation.exe;." --add-data="game_assets;game_assets" --add-data="icon.ico;." setup.py
