@@ -72,16 +72,27 @@ class CinematicBranding:
         # Perspective Grid scrolling offset
         self.grid_scroll = 0.0
 
-        # Typography
-        self.font_brand = pygame.font.SysFont("Impact", 86)
-        self.font_sub   = pygame.font.SysFont("Arial Black", 14)
-        self.font_hud   = pygame.font.SysFont("Consolas", 11)
+        # Typography — Sleek Futuristic Sci-Fi Font Stack
+        font_candidates = ["Bahnschrift", "Segoe UI", "Trebuchet MS", "Century Gothic", "Arial Black"]
+        self.font_brand = None
+        for fc in font_candidates:
+            try:
+                self.font_brand = pygame.font.SysFont(fc, 52, bold=True)
+                if self.font_brand:
+                    break
+            except Exception:
+                continue
+        if not self.font_brand:
+            self.font_brand = pygame.font.SysFont(None, 52, bold=True)
 
-        # Pre-calculated letter positions for "IAMBKRAM"
+        self.font_sub = pygame.font.SysFont("Consolas", 13, bold=True)
+        self.font_hud = pygame.font.SysFont("Consolas", 11)
+
+        # Pre-calculated letter positions for "IAMBKRAM" with wide cinematic tracking
         self.letters = ["I", "A", "M", "B", "K", "R", "A", "M"]
         self.letter_surfs = [self.font_brand.render(ch, True, WHITE) for ch in self.letters]
         self.letter_widths = [s.get_width() for s in self.letter_surfs]
-        self.letter_spacing = 8
+        self.letter_spacing = 16  # Wide, elegant sci-fi tracking
         total_text_w = sum(self.letter_widths) + (len(self.letters) - 1) * self.letter_spacing
         
         curr_x = self.cx - total_text_w // 2
@@ -91,15 +102,18 @@ class CinematicBranding:
             self.letter_x_centers.append(cx_letter)
             curr_x += w + self.letter_spacing
 
-        # Pre-render letter glow halos
+        # Pre-render letter glow halos (soft, diffused, non-blocking)
         self.letter_glow_surfs = [
-            self.font_brand.render(ch, True, NEON_CYAN) for ch in self.letters
+            self.font_brand.render(ch, True, (0, 235, 255)) for ch in self.letters
+        ]
+        self.letter_shadow_surfs = [
+            self.font_brand.render(ch, True, (8, 12, 28)) for ch in self.letters
         ]
         self.letter_chroma_r = [
             self.font_brand.render(ch, True, (255, 40, 90)) for ch in self.letters
         ]
         self.letter_chroma_b = [
-            self.font_brand.render(ch, True, (0, 220, 255)) for ch in self.letters
+            self.font_brand.render(ch, True, (0, 200, 255)) for ch in self.letters
         ]
 
         # Scratch surfaces for performance
@@ -215,12 +229,11 @@ class CinematicBranding:
             # Visceral multi-frequency screen shake
             self.shake_x = random.choice([-1, 1]) * random.uniform(8.0, 14.0)
             self.shake_y = random.choice([-1, 1]) * random.uniform(7.0, 11.0)
-            # Triple chromatic supernova shockwaves
-            self._spawn_shockwave(self.cx, self.cy, max_radius=500, speed=13.0, color=NEON_CYAN, width=5)
-            self._spawn_shockwave(self.cx, self.cy, max_radius=420, speed=9.5, color=NEON_PINK, width=3)
-            self._spawn_shockwave(self.cx, self.cy, max_radius=340, speed=7.0, color=NEON_GOLD, width=2)
+            # High-speed expanding chromatic shockwaves (fast expansion, no lingering rings)
+            self._spawn_shockwave(self.cx, self.cy, max_radius=480, speed=16.0, color=NEON_CYAN, width=3)
+            self._spawn_shockwave(self.cx, self.cy, max_radius=380, speed=13.5, color=NEON_PINK, width=2)
             # 100-particle supernova blast
-            self._spawn_radial_burst(self.cx, self.cy, count=100, speed_range=(4.0, 19.0))
+            self._spawn_radial_burst(self.cx, self.cy, count=90, speed_range=(4.0, 18.0))
 
         # Audio Cue 3: Specular Laser Flare Sweep (t = 2750ms)
         if elapsed >= 2750 and not self.snd_sweep_played:
@@ -556,44 +569,49 @@ class CinematicBranding:
             else:
                 sweep_x = -999.0
 
-            # Render each letter with individual specular super-ignition
+            # Render each letter with crisp multi-pass chrome/neon styling
             for i, ch in enumerate(self.letters):
                 lx = self.letter_x_centers[i] + ox
                 ly = self.text_y + oy
 
                 dist_to_flare = abs(lx - sweep_x)
-                if dist_to_flare < 45.0:
-                    specular_boost = 1.0 - (dist_to_flare / 45.0)
+                if dist_to_flare < 50.0:
+                    specular_boost = 1.0 - (dist_to_flare / 50.0)
                 else:
                     specular_boost = 0.0
 
-                # Layer 1: Soft Outer Neon Bloom (Additive)
+                # --- Layer 1: Soft Ambient Neon Bloom (Delicate halo, not solid box) ---
                 bloom_s = self.letter_glow_surfs[i].copy()
-                bloom_alpha = min(255, int(text_alpha * (0.5 + 0.5 * specular_boost)))
+                bloom_alpha = min(160, int(text_alpha * (0.28 + 0.45 * specular_boost)))
                 bloom_s.set_alpha(bloom_alpha)
-                for bx, by in [(-3, 0), (3, 0), (0, -3), (0, 3)]:
+                for bx, by in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
                     screen.blit(bloom_s, bloom_s.get_rect(center=(lx + bx, ly + by)), special_flags=pygame.BLEND_ADD)
 
-                # Layer 2: 3D Chromatic Aberration Split
-                if text_alpha > 50:
-                    chr_r = self.letter_chroma_r[i].copy()
-                    chr_r.set_alpha(int(text_alpha * 0.4))
-                    screen.blit(chr_r, chr_r.get_rect(center=(lx - 2, ly)))
-                    chr_b = self.letter_chroma_b[i].copy()
-                    chr_b.set_alpha(int(text_alpha * 0.4))
-                    screen.blit(chr_b, chr_b.get_rect(center=(lx + 2, ly)))
+                # --- Layer 2: 3D Dark Elevation Shadow ---
+                shadow_s = self.letter_shadow_surfs[i].copy()
+                shadow_s.set_alpha(int(text_alpha * 0.85))
+                screen.blit(shadow_s, shadow_s.get_rect(center=(lx + 2, ly + 3)))
 
-                # Layer 3: Solid Face with Specular Scale Pulse
+                # --- Layer 3: 3D Chromatic Aberration Edge Split ---
+                if text_alpha > 60:
+                    chr_r = self.letter_chroma_r[i].copy()
+                    chr_r.set_alpha(int(text_alpha * 0.35))
+                    screen.blit(chr_r, chr_r.get_rect(center=(lx - 1, ly)))
+                    chr_b = self.letter_chroma_b[i].copy()
+                    chr_b.set_alpha(int(text_alpha * 0.35))
+                    screen.blit(chr_b, chr_b.get_rect(center=(lx + 1, ly)))
+
+                # --- Layer 4: Razor-Sharp Titanium White Face with Specular Scale ---
                 if specular_boost > 0.05:
                     face_s = self.letter_surfs[i].copy()
                     face_s.set_alpha(255)
-                    sc = 1.0 + 0.15 * specular_boost
+                    sc = 1.0 + 0.10 * specular_boost
                     if sc > 1.01:
                         face_s = pygame.transform.scale(
                             face_s,
                             (int(face_s.get_width() * sc), int(face_s.get_height() * sc))
                         )
-                    screen.blit(face_s, face_s.get_rect(center=(lx, ly - int(3 * specular_boost))))
+                    screen.blit(face_s, face_s.get_rect(center=(lx, ly - int(2 * specular_boost))))
                 else:
                     face_s = self.letter_surfs[i].copy()
                     face_s.set_alpha(text_alpha)
@@ -609,48 +627,48 @@ class CinematicBranding:
                 flare_surf = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
 
                 # A. 45-degree angled laser beam streak
-                pygame.draw.line(flare_surf, (255, 255, 255, 160), (fx - 35, fy - 60), (fx + 35, fy + 60), 3)
-                pygame.draw.line(flare_surf, (*NEON_CYAN, 80), (fx - 45, fy - 75), (fx + 45, fy + 75), 9)
+                pygame.draw.line(flare_surf, (255, 255, 255, 160), (fx - 30, fy - 45), (fx + 30, fy + 45), 2)
+                pygame.draw.line(flare_surf, (*NEON_CYAN, 70), (fx - 40, fy - 60), (fx + 40, fy + 60), 6)
 
-                # B. Wide horizontal anamorphic flare beam (240px wide)
-                pygame.draw.line(flare_surf, (255, 255, 255, 240), (fx - 120, fy), (fx + 120, fy), 2)
-                pygame.draw.line(flare_surf, (*NEON_CYAN, 120), (fx - 160, fy), (fx + 160, fy), 6)
+                # B. Wide horizontal anamorphic flare beam (220px wide)
+                pygame.draw.line(flare_surf, (255, 255, 255, 220), (fx - 110, fy), (fx + 110, fy), 2)
+                pygame.draw.line(flare_surf, (*NEON_CYAN, 90), (fx - 150, fy), (fx + 150, fy), 4)
 
                 # C. Diamond lens flare core with gold aura
-                f_diamond = [(fx, fy - 20), (fx + 12, fy), (fx, fy + 20), (fx - 12, fy)]
+                f_diamond = [(fx, fy - 16), (fx + 10, fy), (fx, fy + 16), (fx - 10, fy)]
                 pygame.draw.polygon(flare_surf, (255, 255, 255, 255), f_diamond)
-                pygame.draw.circle(flare_surf, (*NEON_GOLD, 180), (fx, fy), 22)
+                pygame.draw.circle(flare_surf, (*NEON_GOLD, 160), (fx, fy), 18)
 
                 screen.blit(flare_surf, (0, 0), special_flags=pygame.BLEND_ADD)
 
                 # Trailing sparkle motes
-                if random.random() < 0.75:
+                if random.random() < 0.7:
                     self.particles.append({
-                        'x': fx + random.uniform(-12, 12),
-                        'y': fy + random.uniform(-22, 22),
-                        'vx': random.uniform(-1.8, 1.8),
-                        'vy': random.uniform(-3.0, -0.5),
-                        'life': 22,
-                        'max_life': 22,
+                        'x': fx + random.uniform(-10, 10),
+                        'y': fy + random.uniform(-18, 18),
+                        'vx': random.uniform(-1.5, 1.5),
+                        'vy': random.uniform(-2.5, -0.5),
+                        'life': 20,
+                        'max_life': 20,
                         'col': random.choice([WHITE, NEON_GOLD, NEON_CYAN]),
-                        'size': random.uniform(2.0, 4.0),
+                        'size': random.uniform(2.0, 3.5),
                         'decay': 0.94
                     })
 
             # =========================================================================
-            # 10. SUBTITLE & EXPANDING LASER DIVIDERS
+            # 10. SUBTITLE & SLEEK CYBER STUDIO FRAMING
             # =========================================================================
             if elapsed >= 2100:
                 sub_alpha_t = min(1.0, (elapsed - 2100) / 500.0)
                 sub_alpha = int(sub_alpha_t * 255)
 
                 # Laser Dividers flanking subtitle with glowing endpoint diamonds
-                div_len = int(140 * sub_alpha_t)
-                draw_divider(screen, self.cx + ox - 240, self.sub_y + oy, self.cx + ox - 240 + div_len, color=NEON_CYAN, alpha=int(sub_alpha * 0.7))
-                draw_divider(screen, self.cx + ox + 240 - div_len, self.sub_y + oy, self.cx + ox + 240, color=NEON_CYAN, alpha=int(sub_alpha * 0.7))
+                div_len = int(120 * sub_alpha_t)
+                draw_divider(screen, self.cx + ox - 200, self.sub_y + oy, self.cx + ox - 200 + div_len, color=NEON_CYAN, alpha=int(sub_alpha * 0.6))
+                draw_divider(screen, self.cx + ox + 200 - div_len, self.sub_y + oy, self.cx + ox + 200, color=NEON_CYAN, alpha=int(sub_alpha * 0.6))
 
-                # Subtitle: [  P R E S E N T S  ]
-                sub_text = "[  P R E S E N T S  ]"
+                # Subtitle: [  G A M I N G   S T U D I O S  ]
+                sub_text = "[  G A M I N G   S T U D I O S  ]"
                 sub_surf = self.font_sub.render(sub_text, True, NEON_GOLD)
                 sub_surf.set_alpha(sub_alpha)
                 screen.blit(sub_surf, sub_surf.get_rect(center=(self.cx + ox, self.sub_y + oy)))
