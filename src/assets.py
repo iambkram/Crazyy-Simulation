@@ -32,10 +32,23 @@ try:
     FONT_AUTH_TITLE = pygame.font.SysFont("Segoe UI", 20, bold=True)
     FONT_AUTH_SUB   = pygame.font.SysFont("Segoe UI", 12)
     FONT_AUTH_INPUT = pygame.font.SysFont("Segoe UI", 16, bold=True)
+    
+    # Modern Sci-Fi Main Menu Fonts
+    _menu_font_fam = "Bahnschrift" if "bahnschrift" in pygame.font.get_fonts() else "Segoe UI"
+    FONT_MENU_TITLE     = pygame.font.SysFont(_menu_font_fam, 46, bold=True)
+    FONT_MENU_SUB       = pygame.font.SysFont(_menu_font_fam, 13, bold=True)
+    FONT_MENU_CARD_MAIN = pygame.font.SysFont(_menu_font_fam, 18, bold=True)
+    FONT_MENU_CARD_DESC = pygame.font.SysFont("Segoe UI", 11)
+    FONT_MENU_TELEMETRY = pygame.font.SysFont("Consolas", 11)
 except Exception:
     FONT_AUTH_TITLE = FONT_SMALL
     FONT_AUTH_SUB   = FONT_TINY
     FONT_AUTH_INPUT = FONT_SMALL
+    FONT_MENU_TITLE = FONT_TITLE
+    FONT_MENU_SUB   = FONT_SMALL
+    FONT_MENU_CARD_MAIN = FONT_SMALL
+    FONT_MENU_CARD_DESC = FONT_TINY
+    FONT_MENU_TELEMETRY = FONT_TINY
 
 # Text Surface Cache (LRU) for performance
 _text_cache = {}

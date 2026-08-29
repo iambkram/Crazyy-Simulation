@@ -47,6 +47,7 @@ from ui.auth_ui import AuthUI
 from ui.level_select_ui import render_env_select, render_level_select
 from ui.store_ui import render_store, render_store_confirm, render_store_error
 from ui.settings_ui import render_settings
+from ui.main_menu_ui import render_main_menu
 auth_ui = AuthUI()
 
 # ==========================================
@@ -1021,111 +1022,21 @@ while running:
         menu_battle_sim.update(dt=dt, current_env=current_selected_env)
         menu_battle_sim.draw(screen, current_env=current_selected_env)
 
-        mx, my = pygame.mouse.get_pos()
-        m_down = pygame.mouse.get_pressed()[0]
-
-        # ---- Subtle neon edge vignette over the battle bg ----
+        # Subtle neon edge vignette over the battle background
         draw_neon_vignette(screen, color=(0, 10, 30), alpha_edge=90, steps=5)
 
-        # ---- TITLE BLOCK ----
-        # Primary glowing title
-        title_glow_a = int(80 + 40 * math.sin(ui_pulse_t * 1.8))
-        for goff, ga in [(5, title_glow_a // 4), (3, title_glow_a // 2), (1, title_glow_a)]:
-            ts = FONT_TITLE.render("CRAZYY SIMULATION", True, NEON_CYAN)
-            ts.set_alpha(ga)
-            screen.blit(ts, ts.get_rect(center=(400 + goff, 70)))
-        draw_text_shadow("CRAZYY SIMULATION", FONT_TITLE, NEON_CYAN, 400, 70, shadow_color=(0, 60, 100), offset=3)
+        mx, my = pygame.mouse.get_pos()
 
-        # COSMIC CIVIL WAR subtitle — glitch flicker effect
-        ccw_alpha = int(180 + 60 * math.sin(ui_pulse_t * 3.1))
-        ccw_col = (min(255, ccw_alpha), min(255, int(210 * ccw_alpha / 240)), 50)
-        ccw_surf = FONT_MODAL_SUB.render("[ COSMIC CIVIL WAR ]", True, ccw_col)
-        # Occasional glitch offset
-        glitch_ox = int(random.choice([0, 0, 0, 2, -2]) if random.random() < 0.08 else 0)
-        screen.blit(ccw_surf, ccw_surf.get_rect(center=(400 + glitch_ox, 108)))
+        # Render Next-Gen AAA Sci-Fi Cyberpunk Main Menu UI
+        res = render_main_menu(
+            screen, mx, my, m_c, key_escape, key_enter, key_up, key_down, key_tab,
+            tap_snd, ui_pulse_t, total_coins, coin_icon, cloud_sync, current_selected_env,
+            unlocked_hp, unlocked_speed, unlocked_bullets, unlocked_firerate,
+            hp_step, speed_step, bullet_step, firerate_step, focused_btn
+        )
+        target_state, focused_btn, running, click_cooldown, m_c, should_logout = res
 
-        # Thin horizontal neon divider beneath title
-        div_surf = pygame.Surface((300, 1), pygame.SRCALPHA)
-        div_surf.fill((*NEON_CYAN, 80))
-        screen.blit(div_surf, (250, 128))
-
-        # ---- COIN BADGE (top center) ----
-        coin_panel = pygame.Rect(320, 124, 160, 32)
-        pygame.draw.rect(screen, (14, 16, 28), coin_panel, border_radius=16)
-        pygame.draw.rect(screen, NEON_GOLD, coin_panel, width=1, border_radius=16)
-        screen.blit(coin_icon, (328, 117))
-        draw_text(str(total_coins), FONT_UI, NEON_GOLD, 395, 140)
-
-        # ---- TOP RIGHT PROFILE BADGE ----
-        profile_name = cloud_sync.current_username or "Guest"
-        if len(profile_name) > 12:
-            profile_name = profile_name[:10] + ".."
-        prof_rect = pygame.Rect(645, 12, 140, 26)
-        pygame.draw.rect(screen, (14, 18, 30), prof_rect, border_radius=13)
-        pygame.draw.rect(screen, (40, 60, 90), prof_rect, width=1, border_radius=13)
-        draw_text(f" {profile_name}", FONT_TINY, NEON_CYAN, prof_rect.centerx, prof_rect.centery)
-
-        # ---- MENU BUTTONS ----
-        menu_btns = [
-            (">  CAMPAIGN",    NEON_BLUE,      172, 20),
-            (">  MULTIPLAYER", MID_GRAY,       234, "locked"),
-            (">  STORE",       (140, 40, 200), 296, 6),
-            (">   SETTINGS",   NEON_ORANGE,    358, 9),
-            ("X  QUIT",        NEON_PINK,      420, 0),
-        ]
-
-        # Keyboard navigation for menu
-        if key_down or key_tab:
-            focused_btn = (focused_btn + 1) % len(menu_btns)
-        if key_up:
-            focused_btn = (focused_btn - 1) % len(menu_btns)
-        if key_escape:
-            running = False
-
-        for idx, (txt, col, y, target) in enumerate(menu_btns):
-            btn_rect = pygame.Rect(250, y, 300, 50)
-            is_hover = btn_rect.collidepoint(mx, my)
-            is_focused = (idx == focused_btn)
-            if is_hover and target != "locked":
-                focused_btn = idx  # Mouse overrides keyboard focus
-            
-            draw_glowing_button(screen, txt, FONT_UI, WHITE if target != "locked" else LIGHT_GRAY, btn_rect, col, (is_hover or is_focused) and target != "locked",
-                                border_radius=14, accent=NEON_CYAN, pulse_t=ui_pulse_t)
-            
-            if target == "locked":
-                # Draw COMING SOON badge
-                badge_rect = pygame.Rect(btn_rect.right - 92, btn_rect.y - 8, 96, 22)
-                pygame.draw.rect(screen, RED, badge_rect, border_radius=11)
-                draw_text("COMING v2.0", FONT_TINY, WHITE, badge_rect.centerx, badge_rect.centery)
-
-            # Keyboard focus indicator
-            if is_focused and not is_hover and target != "locked":
-                focus_surf = pygame.Surface((btn_rect.width + 8, btn_rect.height + 8), pygame.SRCALPHA)
-                pygame.draw.rect(focus_surf, (*NEON_CYAN, 90), focus_surf.get_rect(), border_radius=16, width=2)
-                screen.blit(focus_surf, (btn_rect.x - 4, btn_rect.y - 4))
-
-            activated = (m_c and is_hover) or (key_enter and is_focused)
-            if activated and target != "locked":
-                tap_snd.play()
-                if txt.endswith("QUIT"):
-                    running = False
-                else:
-                    if target == 9:
-                        settings_from_pause = False
-                    elif target == 20:
-                        win_snd_played = False
-                        loose_snd_played = False
-                    state = target
-                    click_cooldown = 12
-                    m_c = False
-
-        # ---- BOTTOM LEFT: LOGOUT BUTTON (Clean & Small) ----
-        btn_quick_logout = pygame.Rect(18, 554, 115, 30)
-        is_h_q_logout = btn_quick_logout.collidepoint(mx, my)
-        draw_glowing_button(screen, "ESC LOGOUT", FONT_TINY, WHITE, btn_quick_logout, RED, is_h_q_logout, border_radius=10, pulse_t=0)
-        
-        if m_c and is_h_q_logout:
-            tap_snd.play()
+        if should_logout:
             cloud_sync.clear_local_session()
             total_coins = 0
             max_galaxy_level = 1
@@ -1145,23 +1056,15 @@ while running:
             state = -3
             click_cooldown = 12
             m_c = False
-
-        # ---- BOTTOM RIGHT: REPORT ISSUES BUTTON (Direct to GitHub) ----
-        btn_report_issues = pygame.Rect(642, 554, 140, 30)
-        is_h_report = btn_report_issues.collidepoint(mx, my)
-        draw_glowing_button(screen, "🐛 REPORT ISSUES", FONT_TINY, WHITE, btn_report_issues, NEON_CYAN, is_h_report, border_radius=10, pulse_t=ui_pulse_t)
-
-        if m_c and is_h_report:
-            tap_snd.play()
-            try:
-                webbrowser.open("https://github.com/iambkram/Crazyy-Simulation/issues")
-            except Exception as e:
-                print("Error opening issues page:", e)
+        elif target_state != 0:
+            if target_state == 9:
+                settings_from_pause = False
+            elif target_state == 20:
+                win_snd_played = False
+                loose_snd_played = False
+            state = target_state
             click_cooldown = 12
             m_c = False
-
-        # ---- BOTTOM CENTER: VERSION TAG ----
-        draw_text("v1.0.0  |  @iambkram", FONT_TINY, (60, 90, 130), 400, 569)
 
     elif state == 6:
         res = render_store(
