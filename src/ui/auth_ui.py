@@ -278,7 +278,7 @@ class AuthUI:
             if is_h_back:
                 tap_snd.play()
                 self.login_error_msg = ""
-                return 11 if is_bind else -4
+                return 9 if is_bind else -4
 
             if (is_h_submit or key_enter) and len(self.setup_username) >= 3 and len(self.setup_password) >= 3:
                 tap_snd.play()

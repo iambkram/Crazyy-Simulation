@@ -67,7 +67,8 @@ except Exception:
 
 if is_mobile():
     screen = mobile_scaling.create_window()
-    is_fullscreen = True
+    is_fullscreen = mobile_scaling.is_android_device()
+    pygame.display.set_caption("Crazyy Simulation [Mobile Edition — Touch Simulator]")
 else:
     screen = pc_windowing.create_window(
         fullscreen=False,
@@ -75,8 +76,7 @@ else:
         resizable=_plat["resizable"],
     )
     is_fullscreen = False
-
-pygame.display.set_caption("Crazyy Simulation")
+    pygame.display.set_caption("Crazyy Simulation [PC Edition]")
 
 def apply_display_mode(fullscreen):
     """Safely apply Fullscreen or Windowed display mode with hardware scaling preserved."""
@@ -917,23 +917,7 @@ while running:
             m_wheel = event.y
         if event.type == pygame.MOUSEMOTION:
             mouse_dx, mouse_dy = event.rel
-        if event.type == pygame.FINGERDOWN:
-            mx, my = mobile_scaling.logical_from_finger(event)
-            pygame.mouse.set_pos(mx, my)
-            mouse_pressed = True
-            if click_cooldown <= 0:
-                m_c = True
-                ignore_mouse_until_released = False
-        if event.type == pygame.FINGERUP:
-            mouse_pressed = False
-            if not ignore_mouse_until_released and click_cooldown <= 0:
-                m_u = True
-            ignore_mouse_until_released = False
-        if event.type == pygame.FINGERMOTION:
-            nx, ny = mobile_scaling.logical_from_finger(event)
-            mouse_dx, mouse_dy = nx - mx, ny - my
-            mx, my = nx, ny
-            pygame.mouse.set_pos(mx, my)
+        # FINGER events removed: Pygame 2 synthesizes correctly letterbox-scaled MOUSE events for touch natively.
         if event.type == pygame.KEYDOWN:
             _uni = getattr(event, "unicode", "") or ""
             if _uni.isprintable() and len(_uni) > 0:
@@ -1011,7 +995,7 @@ while running:
     elif state == -5:
         auth_ui.handle_input(key_unicode, key_backspace, key_tab)
         state = auth_ui.render_auth_form(screen, mx, my, m_c, key_enter, tap_snd, menu_bg, ui_pulse_t, now, is_signup=True, is_bind=True)
-        if state == 11: # Cancelled bind, back to settings
+        if state == 9: # Cancelled bind, back to settings
             click_cooldown = 12
             m_c = False
     # ==========================
@@ -1150,7 +1134,13 @@ while running:
             unlocked_hp = 200
             unlocked_speed = 7
             unlocked_bullets = 1
+            unlocked_firerate = 1.0
+            hp_step = 0
+            speed_step = 0
             bullet_step = 0
+            firerate_step = 0
+            env2_unlocked = False
+            env3_unlocked = False
             current_selected_env = 1
             state = -3
             click_cooldown = 12
@@ -1251,7 +1241,6 @@ while running:
         game_won_snd.set_volume(sfx_vol)
         game_loose_snd.set_volume(sfx_vol)
         pygame.mixer.music.set_volume(music_vol)
-        vfx_engine.set_quality(visual_quality)
         vfx_engine.set_quality(visual_quality)
 
     elif state == 11:
@@ -1378,8 +1367,7 @@ while running:
         draw_badge(screen, curr_env_title, FONT_TINY, 400, 150, bg_color=PANEL_MID, text_color=env_acc2, border_color=env_acc2)
         draw_divider(screen, 155, 172, 645, env_acc2, alpha=50)
 
-        boss_kill_reqs = {1: 15, 2: 20, 3: 25, 4: 35, 5: 45, 6: 60, 7: 75, 8: 90, 9: 105, 10: 120}
-        req_k = min(200, 120 + (selected_level - 10) * 4) if selected_level >= 11 else boss_kill_reqs.get(selected_level, 25)
+        req_k = get_boss_kill_req(selected_level)
 
         # Objective card
         obj_rect = pygame.Rect(150, 188, 500, 72)
@@ -1518,7 +1506,7 @@ while running:
         env_speed_mult = 0.68 if is_blackhole else 1.0
         eff_player_speed = max(3.0, unlocked_speed * env_speed_mult)
 
-        # Calculate mouse delta for mobile relative control
+        # Universal delta calculation for smooth frame-to-frame movement (PC & Mobile)
         if 'prev_mx' not in globals():
             global prev_mx, prev_my
             prev_mx, prev_my = mx, my
@@ -1546,7 +1534,7 @@ while running:
                 player_rect.y += eff_player_speed
 
             # Base cooldown governed purely by Store Overclock upgrade (no free level 15 boost)
-            player_base_cd = max(6, 11 - firerate_step + (1 if is_blackhole else 0))
+            player_base_cd = max(3, int(11 - firerate_step * 0.4) + (1 if is_blackhole else 0))
             if pc_controls.is_firing(keys, mouse_pressed, auto_fire_enabled, is_h_pause) and fire_cooldown <= 0:
                 is_firing = True
                 fire_cooldown = player_base_cd
@@ -1558,7 +1546,7 @@ while running:
                 player_rect.x += int(mouse_dx)
                 player_rect.y += int(mouse_dy)
 
-            player_base_cd = max(5, 10 - firerate_step + (1 if is_blackhole else 0))
+            player_base_cd = max(3, int(10 - firerate_step * 0.35) + (1 if is_blackhole else 0))
             if ((is_h_fire and mouse_pressed) or dragging_playfield or auto_fire_enabled) and fire_cooldown <= 0:
                 is_firing = True
                 fire_cooldown = player_base_cd
@@ -1661,6 +1649,10 @@ while running:
                 draw_nebula_overlay(screen, ui_pulse_t)
             elif is_blackhole:
                 draw_blackhole_overlay(screen, ui_pulse_t, bh_cx=BH_X, bh_cy=BH_Y)
+
+            # Subtle cinematic vignette during gameplay (medium + high quality)
+            vignette_alpha = 55 if visual_quality == 'medium' else 80
+            draw_neon_vignette(screen, color=(0, 5, 15), alpha_edge=vignette_alpha, steps=4)
 
         # Draw Player Flight Zone Defense Boundary Line (Only active when boss is arriving or in combat)
         if boss_arriving or boss_active:
@@ -1808,19 +1800,24 @@ while running:
                     if e_type == 'fighter':
                         bx = (player_rect.centerx - 3 if ai_accuracy > 0.5 and random.random() < ai_accuracy
                               else e['rect'].centerx - 3)
+                        b_spd = max(6.8, (6.8 + current_level * 0.04) * env_speed_mult)
                         enemy_bullets.append({'rect': pygame.Rect(bx, e['rect'].bottom, 6, 14),
-                                              'damage': dmg, 'color': RED, 'vx': 0, 'vy': 1.0, 'btype': 'fighter'})
+                                              'damage': dmg, 'color': RED, 'vx': 0.0, 'vy': b_spd, 'btype': 'fighter'})
                     elif e_type == 'elite':
+                        b_spd = max(7.2, (7.2 + current_level * 0.04) * env_speed_mult)
                         for ex_off in [-5, 5]:
+                            rad = math.radians(ex_off * 3.0 + 90)
                             enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx + ex_off, e['rect'].bottom, 6, 14),
-                                                  'damage': dmg, 'color': MAGENTA, 'vx': ex_off * 0.06, 'vy': 1.0, 'btype': 'elite'})
+                                                  'damage': dmg, 'color': MAGENTA,
+                                                  'vx': math.cos(rad) * b_spd, 'vy': math.sin(rad) * b_spd, 'btype': 'elite'})
                     elif e_type == 'heavy':
+                        b_spd = max(6.8, (6.8 + current_level * 0.04) * env_speed_mult)
                         for angle_d in [-20, 0, 20]:
                             rad = math.radians(angle_d + 90)
                             enemy_bullets.append({'rect': pygame.Rect(e['rect'].centerx - 5, e['rect'].bottom, 10, 16),
                                                   'damage': dmg + 4, 'color': ORANGE,
-                                                  'vx': math.cos(rad) * 3.5,
-                                                  'vy': math.sin(rad) * 3.5, 'btype': 'heavy'})
+                                                  'vx': math.cos(rad) * b_spd,
+                                                  'vy': math.sin(rad) * b_spd, 'btype': 'heavy'})
 
                 # Emit thrusters
                 vfx_engine.emit_enemy_thruster(e['rect'].centerx, e['rect'].top, e_type, e['rect'].width)
@@ -1843,7 +1840,7 @@ while running:
                         particles.append([e['rect'].centerx, e['rect'].centery,
                                          random.uniform(-4, 4), random.uniform(-4, 4),
                                          random.randint(3, 6), random.choice(BLAST_COLORS)])
-                elif e['rect'].top > HEIGHT:
+                elif e['rect'].top > HEIGHT or e['rect'].bottom < -200 or e['rect'].right < -150 or e['rect'].left > WIDTH + 150:
                     if e in e_list:
                         e_list.remove(e)
 
@@ -2025,10 +2022,14 @@ while running:
                     if boss_ai_timer % 14 == 0:
                         boss_eff_damage = min(current_level, 4)
                         dmg = 5 * boss_eff_damage
+                        b_spd = max(7.0, 7.5 * env_speed_mult)
                         for bx_off in [-30, -10, 10, 30]:
                             bx = boss_rect.centerx + bx_off
+                            rad = math.radians(bx_off * 0.7 + 90)
                             enemy_bullets.append({'rect': pygame.Rect(bx - 4, boss_rect.bottom, 8, 16),
-                                                  'damage': dmg, 'color': RED, 'vx': bx_off * 0.06, 'vy': 1.0})
+                                                  'damage': dmg, 'color': RED,
+                                                  'vx': math.cos(rad) * b_spd, 'vy': math.sin(rad) * b_spd,
+                                                  'btype': 'boss'})
 
                     if boss_ai_timer > 240:
                         boss_ai_state = 'patrol'
@@ -2061,7 +2062,8 @@ while running:
                         enemy_bullets.append({
                             'rect': pygame.Rect(bx - 5, by, 10, 20),
                             'damage': dmg, 'color': (255, 80, 0),
-                            'vx': norm_x * 4.5, 'vy': norm_y * 4.5
+                            'vx': norm_x * 7.5, 'vy': norm_y * 7.5,
+                            'btype': 'boss'
                         })
 
                     if boss_ai_timer > 200:
@@ -2095,7 +2097,8 @@ while running:
                             enemy_bullets.append({
                                 'rect': pygame.Rect(boss_rect.centerx - 5, boss_rect.centery, 10, 10),
                                 'damage': dmg, 'color': (255, 50, 200),
-                                'vx': math.cos(rad) * 3.8, 'vy': math.sin(rad) * 3.8
+                                'vx': math.cos(rad) * 6.5, 'vy': math.sin(rad) * 6.5,
+                                'btype': 'boss'
                             })
                         boss_ai_state = 'patrol'
                         boss_ai_timer = 0
@@ -2123,7 +2126,8 @@ while running:
                             enemy_bullets.append({
                                 'rect': pygame.Rect(boss_rect.centerx - 4, boss_rect.centery, 8, 8),
                                 'damage': dmg, 'color': (100, 200, 255),
-                                'vx': sx, 'vy': abs(sy) + 1.0
+                                'vx': sx * 1.5, 'vy': abs(sy) * 1.4 + 4.5,
+                                'btype': 'boss'
                             })
 
                     if boss_ai_timer > 200:
@@ -2147,7 +2151,9 @@ while running:
                         dmg = 5 * boss_eff_damage
                         for bx_off in range(-40, 50, 20):
                             enemy_bullets.append({'rect': pygame.Rect(boss_rect.centerx + bx_off - 4, boss_rect.bottom, 8, 16),
-                                                  'damage': dmg, 'color': (255, 100, 0), 'vx': 0, 'vy': 1.0})
+                                                  'damage': dmg, 'color': (255, 100, 0),
+                                                  'vx': (bx_off * 0.04) * 7.0, 'vy': 7.5,
+                                                  'btype': 'boss'})
 
                     if boss_ai_timer > 100:
                         boss_ai_state = 'sweep'
@@ -2185,7 +2191,8 @@ while running:
                             ox = (s_i - (shots - 1) / 2.0) * 26
                             enemy_bullets.append({
                                 'rect': pygame.Rect(int(boss_rect.centerx - 5 + ox), boss_rect.bottom, 10, 18),
-                                'damage': dmg, 'color': RED, 'vx': 0, 'vy': 1.0
+                                'damage': dmg, 'color': RED, 'vx': 0.0, 'vy': 7.5,
+                                'btype': 'boss'
                             })
 
 
@@ -2226,17 +2233,24 @@ while running:
         # Render all ship thrusters beneath hull sprites
         vfx_engine.update_and_draw_thrusters(screen)
 
-        # Enemy Bullets — support both simple (y-only) and vectorized (vx,vy) bullets
-        eb_speed = max(4, int(6 * env_speed_mult))
+        # Enemy Bullets — smooth sub-pixel vectorized movement & high-visibility rendering
+        base_eb_speed = max(6.8, 7.5 * env_speed_mult)
         for eb in enemy_bullets[:]:
-            vx = eb.get('vx', 0)
-            vy = eb.get('vy', 1.0)
-            # Vectorized bullets use their own velocity; simple ones use eb_speed
-            if vx != 0 or vy != 1.0:
-                eb['rect'].x += int(vx * eb_speed * 0.7)
-                eb['rect'].y += int(vy * eb_speed * 0.7)
-            else:
-                eb['rect'].y += eb_speed
+            if 'fx' not in eb:
+                eb['fx'] = float(eb['rect'].x)
+                eb['fy'] = float(eb['rect'].y)
+
+            vx = float(eb.get('vx', 0.0))
+            vy = float(eb.get('vy', 1.0))
+            # If vy was the 1.0 default/placeholder, scale up to base_eb_speed
+            if abs(vx) < 0.001 and abs(vy - 1.0) < 0.001:
+                vy = base_eb_speed
+
+            eb['fx'] += vx
+            eb['fy'] += vy
+            eb['rect'].x = int(eb['fx'])
+            eb['rect'].y = int(eb['fy'])
+
             b_col = eb.get('color', RED)
             b_type = eb.get('btype', 'fighter')
 
@@ -2481,8 +2495,6 @@ while running:
                 pygame.draw.rect(r_surf, (*NEON_SCARLET, r_alpha), r_surf.get_rect(), border_radius=12, width=2)
                 screen.blit(r_surf, (bz['rect'].x - 6, bz['rect'].y - 6))
 
-            if bz['hp'] < bz['hp']:
-                pass
             if bz['hp'] < bz['max_hp']:
                 hp_w = int((bz['rect'].width - 10) * (bz['hp'] / bz['max_hp']))
                 pygame.draw.rect(screen, (40, 40, 40), (bz['rect'].left + 5, bz['rect'].top - 10, bz['rect'].width - 10, 5), border_radius=2)
@@ -2548,12 +2560,12 @@ while running:
             cur_h = max(12, int(70 * scale_ratio))
             p_draw_surf = pygame.transform.scale(player_img, (cur_w, cur_h))
             p_draw_rect = p_draw_surf.get_rect(center=player_rect.center)
-            if player_dmg_anim > 0 and (player_dmg_anim // 2) % 2 == 0 and visual_quality == 'high':
+            if player_dmg_anim > 0 and (player_dmg_anim // 2) % 2 == 0:
                 pass # blink
             else:
                 screen.blit(p_draw_surf, p_draw_rect)
         else:
-            if player_dmg_anim > 0 and (player_dmg_anim // 2) % 2 == 0 and visual_quality == 'high':
+            if player_dmg_anim > 0 and (player_dmg_anim // 2) % 2 == 0:
                 pass
             else:
                 draw_rect = player_rect.copy()
@@ -2603,7 +2615,7 @@ while running:
                     (40, 50, 70), is_h_pause, border_radius=10, outline_color=NEON_CYAN)
 
         if control_type == 'MOBILE':
-            touch_hud.draw_fire_button(screen, is_h_fire and mouse_pressed, FONT_TINY)
+            touch_hud.draw_fire_button(screen, is_h_fire and mouse_pressed, FONT_TINY, pulse_t=ui_pulse_t)
 
         # ── Player Health Bar (right side) — chromatic ──
         hp_bar_rect = pygame.Rect(WIDTH - 212, 18, 188, 20)
@@ -2637,13 +2649,8 @@ while running:
         if control_type == 'MOBILE':
             draw_text("SLIDE TO MOVE & FIRE", FONT_SMALL, (80, 100, 130), WIDTH // 2, HEIGHT - 18)
 
-        # ── Kill Progress Ring ──
-        boss_kill_reqs_hud = {1: 12, 2: 14, 3: 18, 4: 22, 5: 30,
-                              6: 38, 7: 46, 8: 56, 9: 70, 10: 82}
-        req_kills_hud = (min(222, 195 + (current_level - 30) * 3) if current_level >= 31
-                         else (min(222, 140 + (current_level - 20) * 5) if current_level >= 21
-                         else (min(140, 75 + (current_level - 10) * 6) if current_level >= 11
-                         else boss_kill_reqs_hud.get(current_level, 25))))
+        # ── Kill Progress Ring ── (using canonical boss kill requirements)
+        req_kills_hud = get_boss_kill_req(current_level)
         if not boss_active and not boss_arriving:
             kill_frac = min(1.0, kill_count / max(1, req_kills_hud))
             draw_kill_ring(screen, WIDTH // 2 - 20, 88, kill_frac, kill_count, req_kills_hud,
@@ -2663,9 +2670,8 @@ while running:
                 else:
                     s_val['active'] = False
 
-        # Boss Spawning Condition (Beginner-friendly kill scaling)
-        boss_kill_reqs = {1: 15, 2: 20, 3: 25, 4: 35, 5: 45, 6: 60, 7: 75, 8: 90, 9: 105, 10: 120}
-        req_kills = min(200, 120 + (current_level - 10) * 4) if current_level >= 11 else boss_kill_reqs.get(current_level, 25)
+        # Boss Spawning Condition (using canonical kill requirements)
+        req_kills = get_boss_kill_req(current_level)
 
         if kill_count >= req_kills and not boss_active and not boss_arriving and boss_defeated_timer == 0:
             boss_arriving = True
@@ -2929,7 +2935,7 @@ while running:
             draw_holographic_panel(screen, box, accent=NEON_GREEN, alpha=252, border_radius=22,
                                    bg=(10, 24, 18), show_scanlines=True, show_corners=True, pulse_t=ui_pulse_t)
 
-            draw_text_shadow("VICTORY:  VICTORY!", FONT_MODAL_TITLE, NEON_GREEN, 400, 125, shadow_color=(0, 80, 40), offset=2)
+            draw_text_shadow("MISSION ACCOMPLISHED", FONT_MODAL_TITLE, NEON_GREEN, 400, 125, shadow_color=(0, 80, 40), offset=2)
             draw_text("SECTOR SECURED // THREAT NEUTRALIZED", FONT_TINY, NEON_CYAN, 400, 160)
             draw_divider(screen, 170, 178, 630, NEON_GREEN, alpha=50)
 
@@ -2983,7 +2989,7 @@ while running:
             draw_holographic_panel(screen, box, accent=NEON_PINK, alpha=252, border_radius=22,
                                    bg=(28, 10, 15), show_scanlines=True, show_corners=True, pulse_t=ui_pulse_t)
 
-            draw_text_shadow("FAILED:  MISSION FAILED", FONT_MODAL_TITLE, NEON_PINK, 400, 115, shadow_color=(80, 0, 0), offset=2)
+            draw_text_shadow("MISSION FAILED", FONT_MODAL_TITLE, NEON_PINK, 400, 115, shadow_color=(80, 0, 0), offset=2)
             draw_text("STARSHIP DESTROYED IN COMBAT", FONT_TINY, LIGHT_GRAY, 400, 150)
             draw_divider(screen, 160, 168, 640, NEON_PINK, alpha=50)
 

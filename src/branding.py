@@ -101,8 +101,8 @@ class CinematicBranding:
         ]
 
         # Pre-allocated reusable scratch surfaces for performance
-        self._streak_surf = pygame.Surface((4, 40), pygame.SRCALPHA)
-        self._hex_glow_surf = pygame.Surface((200, 200), pygame.SRCALPHA)
+        self._streak_surf = pygame.Surface((200, 200), pygame.SRCALPHA)
+        self._hex_glow_surf = pygame.Surface((800, 600), pygame.SRCALPHA)
         self._dissolve_surf = pygame.Surface((800, 600), pygame.SRCALPHA)
 
     def reset(self):
@@ -244,12 +244,16 @@ class CinematicBranding:
                 line_surf = self._streak_surf
                 min_x = min(x1, x2)
                 min_y = min(y1, y2)
+                sw = max(8, int(abs(x2 - x1) + 8))
+                sh = max(8, int(abs(y2 - y1) + 8))
                 lx1 = x1 - min_x + 3
                 ly1 = y1 - min_y + 3
                 lx2 = x2 - min_x + 3
                 ly2 = y2 - min_y + 3
-                pygame.draw.line(line_surf, (*s['col'], alpha), (lx1, ly1), (lx2, ly2), max(1, int(s['size'])))
-                screen.blit(line_surf, (min_x - 3, min_y - 3))
+                # Clamp to scratch surface bounds
+                if lx2 < 200 and ly2 < 200 and lx1 < 200 and ly1 < 200:
+                    pygame.draw.line(line_surf, (*s['col'], alpha), (lx1, ly1), (lx2, ly2), max(1, int(s['size'])))
+                    screen.blit(line_surf, (min_x - 3, min_y - 3))
 
         # ==========================================
         # 3. 3D PERSPECTIVE CYBER MATRIX FLOOR GRID

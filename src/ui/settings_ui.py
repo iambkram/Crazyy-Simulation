@@ -1,4 +1,4 @@
-﻿import pygame
+import pygame
 import math
 from assets import (draw_menu_starfield, draw_text, draw_text_shadow,
                     draw_holographic_panel, draw_neon_panel, draw_divider,
@@ -45,7 +45,7 @@ def _draw_neon_slider(screen, x, y, width, value, label, accent=NEON_CYAN, mx=0,
     thumb_r = 10
     thumb_rect = pygame.Rect(thumb_x - thumb_r, y + 16 + h // 2 - thumb_r, thumb_r * 2, thumb_r * 2)
 
-    active_rect = track_rect.inflate(16, 24)
+    active_rect = track_rect.inflate(40, 60)
     if m_down and active_rect.collidepoint(mx, my):
         value = max(0.0, min(1.0, (mx - x) / width))
         thumb_x = x + int(width * value)
@@ -167,7 +167,7 @@ def render_settings(screen, mx, my, m_c, m_down, key_escape, tap_snd, ui_pulse_t
         if m_c and is_h_bind:
             tap_snd.play()
             cloud_sync.login_google_async()
-            next_state = 11 if is_pc() else 12
+            next_state = -5
             m_c = False
     else:
         draw_plasma_button(screen, "LOGOUT", FONT_SMALL, WHITE, btn_bind,

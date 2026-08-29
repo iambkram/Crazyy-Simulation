@@ -87,23 +87,39 @@ def draw_text_shadow(text, font, color, x, y, shadow_color=(0,0,0), offset=2, ce
     sc.blit(s_surf, s_rect)
     sc.blit(t_surf, t_rect)
 
+_neon_text_cache = {}
+
 def draw_neon_text(screen, text, font, color, x, y, glow_radius=4, glow_alpha=80, center=True):
-    """Draw text with multi-layer neon glow — like CSS text-shadow stacking."""
-    # Glow layers
-    for r in range(glow_radius, 0, -1):
-        glow_col = (*color[:3], max(10, glow_alpha - r * 14))
-        gsurf = font.render(str(text), True, color)
-        gsurf_a = pygame.Surface(gsurf.get_size(), pygame.SRCALPHA)
-        gsurf_a.fill((0, 0, 0, 0))
-        gsurf_a.blit(gsurf, (0, 0))
-        gsurf_a.set_alpha(max(10, glow_alpha - r * 16))
-        for ox, oy in [(-r, 0), (r, 0), (0, -r), (0, r), (-r, -r), (r, r)]:
-            rect = gsurf_a.get_rect(center=(x + ox, y + oy)) if center else gsurf_a.get_rect(topleft=(x + ox, y + oy))
-            screen.blit(gsurf_a, rect)
-    # Main text
-    tsurf = font.render(str(text), True, color)
-    rect = tsurf.get_rect(center=(x, y)) if center else tsurf.get_rect(topleft=(x, y))
-    screen.blit(tsurf, rect)
+    """Draw text with multi-layer neon glow — cached for performance."""
+    cache_key = (str(text), id(font), color[:3], glow_radius, glow_alpha)
+    if cache_key not in _neon_text_cache:
+        if len(_neon_text_cache) > 200:
+            _neon_text_cache.clear()
+        # Render main text to measure size
+        main_surf = font.render(str(text), True, color)
+        tw, th = main_surf.get_size()
+        pad = glow_radius + 2
+        buf = pygame.Surface((tw + pad * 2, th + pad * 2), pygame.SRCALPHA)
+        cx_local, cy_local = pad + tw // 2, pad + th // 2
+        # Glow layers
+        for r in range(glow_radius, 0, -1):
+            glow_col = (*color[:3], max(10, glow_alpha - r * 14))
+            gsurf = font.render(str(text), True, glow_col[:3])
+            gsurf_a = pygame.Surface(gsurf.get_size(), pygame.SRCALPHA)
+            gsurf_a.blit(gsurf, (0, 0))
+            gsurf_a.set_alpha(max(10, glow_alpha - r * 16))
+            for ox, oy in [(-r, 0), (r, 0), (0, -r), (0, r), (-r, -r), (r, r)]:
+                rect = gsurf_a.get_rect(center=(cx_local + ox, cy_local + oy))
+                buf.blit(gsurf_a, rect)
+        # Main text
+        rect = main_surf.get_rect(center=(cx_local, cy_local))
+        buf.blit(main_surf, rect)
+        _neon_text_cache[cache_key] = buf
+    cached = _neon_text_cache[cache_key]
+    if center:
+        screen.blit(cached, cached.get_rect(center=(x, y)))
+    else:
+        screen.blit(cached, cached.get_rect(topleft=(x, y)))
 
 def draw_glitch_text(screen, text, font, color, x, y, now, glitch_intensity=0.08):
     """Draw text with occasional random-character glitch frames (cyberpunk effect)."""
@@ -359,62 +375,111 @@ def draw_gradient_bar(screen, rect, fraction, color_low, color_high, bg_color=(2
                        color_full=color_high, color_low=color_low)
 
 _bullet_cache = {}
-def _get_rotated_bullet(bullet_type, width, height, color, angle_deg, pulse_t):
-    angle_quant = int(round(angle_deg / 5.0) * 5) % 360
+def _get_rotated_bullet(bullet_type, width, height, color, angle_deg, pulse_t=0.0):
+    """Generate and cache high-quality stylized bullets with neon bloom and directional ion wakes."""
+    angle_quant = int(angle_deg / 15) * 15
     pulse_quant = int((math.sin(pulse_t * 6) + 1) * 3)  # 0 to 6
-    key = (bullet_type, width, height, color, angle_quant, pulse_quant)
+    key = (bullet_type, width, height, color[:3], angle_quant, pulse_quant)
     if key in _bullet_cache:
         return _bullet_cache[key]
 
-    surf_w, surf_h = width + 16, height + 16
+    pad = 12
+    surf_w, surf_h = width + pad * 2, height + pad * 2
     base = pygame.Surface((surf_w, surf_h), pygame.SRCALPHA)
-    rect = pygame.Rect(8, 8, width, height)
+    rect = pygame.Rect(pad, pad, width, height)
 
     if bullet_type == 'plasma':
-        # Up-facing capsule
-        halo_alpha = int(40 + pulse_quant * 8)
-        pygame.draw.rect(base, (*color, halo_alpha), rect.inflate(10, 10), border_radius=width)
-        pygame.draw.rect(base, color, rect, border_radius=max(2, width // 2))
+        # Up-facing player plasma bolt with radiant bloom
+        halo_alpha = int(45 + pulse_quant * 8)
+        pygame.draw.rect(base, (*color[:3], halo_alpha), rect.inflate(10, 10), border_radius=width)
+        pygame.draw.rect(base, color[:3], rect, border_radius=max(2, width // 2))
         core_rect = rect.inflate(-2, -4)
         if core_rect.width > 0 and core_rect.height > 0:
             pygame.draw.rect(base, (255, 255, 255), core_rect, border_radius=max(1, core_rect.width // 2))
-            
-        # Optional tail
-        pygame.draw.polygon(base, (*color, halo_alpha), [
+        # Tapered ion wake tail
+        pygame.draw.polygon(base, (*color[:3], int(65 + pulse_quant * 8)), [
+            (rect.left + 1, rect.bottom), (rect.right - 1, rect.bottom), (rect.centerx, rect.bottom + 7)
+        ])
+
+    elif bullet_type == 'commander':
+        # Hyper-Laser — broad dual-beam with radiant corona and starburst tip
+        halo_alpha = int(60 + pulse_quant * 10)
+        pygame.draw.rect(base, (*color[:3], halo_alpha), rect.inflate(10, 8), border_radius=4)
+        # Outer beam rail
+        pygame.draw.rect(base, (*color[:3], 150), pygame.Rect(rect.centerx - 4, rect.y, 8, rect.height), border_radius=3)
+        pygame.draw.rect(base, color[:3], pygame.Rect(rect.centerx - 3, rect.y, 6, rect.height))
+        # Intense white-gold laser core
+        pygame.draw.rect(base, (255, 255, 220), pygame.Rect(rect.centerx - 1, rect.y + 1, 2, rect.height - 2))
+        # Starburst lens flare at tip
+        flare_y = rect.y + 2
+        pygame.draw.circle(base, (255, 255, 255), (rect.centerx, flare_y), 3)
+        pygame.draw.circle(base, (*color[:3], 100), (rect.centerx, flare_y), 5, 1)
+
+    elif bullet_type == 'heavy':
+        # Heavy Plasma Torpedo — dense armored shell + pulsating energy core
+        halo_alpha = int(55 + pulse_quant * 10)
+        pygame.draw.rect(base, (*color[:3], halo_alpha), rect.inflate(8, 6), border_radius=max(3, width // 2))
+        pygame.draw.rect(base, color[:3], rect, border_radius=max(2, width // 2))
+        # Superheated white core
+        core_rect = rect.inflate(-2, -4)
+        if core_rect.width > 0 and core_rect.height > 0:
+            pygame.draw.rect(base, (255, 255, 230), core_rect, border_radius=max(1, core_rect.width // 2))
+        # Tip spark
+        pygame.draw.circle(base, (255, 255, 255), (rect.centerx, rect.top + 2), 2)
+        # Exhaust wake
+        pygame.draw.polygon(base, (*color[:3], 85), [
+            (rect.left, rect.bottom), (rect.right, rect.bottom), (rect.centerx, rect.bottom + 8)
+        ])
+
+    elif bullet_type == 'elite':
+        # Violet/Magenta Twin-Core Beam — sleek high-energy dart
+        halo_alpha = int(50 + pulse_quant * 9)
+        pygame.draw.rect(base, (*color[:3], halo_alpha), rect.inflate(8, 6), border_radius=width)
+        pygame.draw.rect(base, color[:3], rect, border_radius=max(2, width // 2))
+        core_w = max(1, width - 2)
+        core_rect = pygame.Rect(rect.x + 1, rect.y + 2, core_w, max(2, height - 4))
+        pygame.draw.rect(base, (255, 240, 255), core_rect, border_radius=max(1, core_w // 2))
+        # Tip spark & trailing tail
+        pygame.draw.circle(base, (255, 255, 255), (rect.centerx, rect.top + 1), 2)
+        pygame.draw.polygon(base, (*color[:3], 80), [
             (rect.left + 1, rect.bottom), (rect.right - 1, rect.bottom), (rect.centerx, rect.bottom + 6)
         ])
-    elif bullet_type in ('heavy', 'commander'):
-        # LASER BEAM — thin, elongated, neon with bright core line
+
+    elif bullet_type == 'phantom':
+        # Spectral Phase Shard — ethereal violet-cyan missile
+        halo_alpha = int(60 + pulse_quant * 12)
+        pygame.draw.rect(base, (*color[:3], halo_alpha), rect.inflate(8, 8), border_radius=width)
+        pygame.draw.polygon(base, color[:3], [
+            (rect.centerx, rect.top), (rect.right, rect.centery),
+            (rect.centerx, rect.bottom), (rect.left, rect.centery)
+        ])
+        pygame.draw.circle(base, (220, 255, 255), (rect.centerx, rect.centery), max(1, width // 4))
+
+    elif bullet_type == 'berserker':
+        # Scarlet Spiked Bolt — aggressive angular projectile
         halo_alpha = int(55 + pulse_quant * 10)
-        # Outer glow halo (wide, soft)
-        halo_rect = rect.inflate(6, 4)
-        pygame.draw.rect(base, (*color, halo_alpha), halo_rect, border_radius=3)
-        # Main laser body (narrow rectangle)
-        laser_rect = pygame.Rect(rect.centerx - 2, rect.y, 4, rect.height)
-        pygame.draw.rect(base, color, laser_rect)
-        # Bright white core line
-        core_rect = pygame.Rect(rect.centerx - 1, rect.y + 1, 2, rect.height - 2)
-        pygame.draw.rect(base, (255, 255, 255), core_rect)
-        # Bright tip flare at head of laser
-        flare_y = rect.y + 2
-        flare_r = 3 if bullet_type == 'commander' else 2
-        tip_col = (255, 255, 220) if bullet_type == 'commander' else (255, 255, 255)
-        pygame.draw.circle(base, tip_col, (rect.centerx, flare_y), flare_r)
-        # Commander gets wider double-line laser
-        if bullet_type == 'commander':
-            pygame.draw.rect(base, (*color, 140), pygame.Rect(rect.centerx - 4, rect.y, 8, rect.height), border_radius=2)
-            pygame.draw.rect(base, color, pygame.Rect(rect.centerx - 3, rect.y, 6, rect.height))
-            pygame.draw.rect(base, (255, 255, 200), pygame.Rect(rect.centerx - 1, rect.y, 2, rect.height))
+        pygame.draw.rect(base, (*color[:3], halo_alpha), rect.inflate(6, 8), border_radius=width)
+        pygame.draw.rect(base, color[:3], rect, border_radius=max(2, width // 2))
+        core_rect = rect.inflate(-2, -4)
+        if core_rect.width > 0 and core_rect.height > 0:
+            pygame.draw.rect(base, (255, 255, 255), core_rect, border_radius=max(1, core_rect.width // 2))
+        pygame.draw.circle(base, (255, 255, 255), (rect.centerx, rect.top + 1), 2)
+        pygame.draw.polygon(base, (*color[:3], 90), [
+            (rect.left, rect.bottom), (rect.right, rect.bottom), (rect.centerx, rect.bottom + 6)
+        ])
+
     else:
-        # Standard enemy bullet (fighter / elite / phantom / berserker)
-        pygame.draw.rect(base, (*color, 55), rect.inflate(8, 8), border_radius=width)
-        pygame.draw.rect(base, color, rect, border_radius=max(2, width // 2))
+        # Standard Fighter Needle — bright crimson bolt with glowing white core
+        halo_alpha = int(45 + pulse_quant * 8)
+        pygame.draw.rect(base, (*color[:3], halo_alpha), rect.inflate(8, 8), border_radius=width)
+        pygame.draw.rect(base, color[:3], rect, border_radius=max(2, width // 2))
         core_w = max(1, width - 2)
         core_rect = pygame.Rect(rect.x + 1, rect.y + 2, core_w, max(2, height - 4))
         pygame.draw.rect(base, (255, 255, 255), core_rect, border_radius=max(1, core_w // 2))
-
-        if bullet_type == 'boss' and width >= 8:
-            pygame.draw.circle(base, (255, 255, 255), (rect.centerx, rect.top + 2), 3)
+        pygame.draw.circle(base, (255, 240, 240), (rect.centerx, rect.top + 1), 2)
+        pygame.draw.polygon(base, (*color[:3], 70), [
+            (rect.left + 1, rect.bottom), (rect.right - 1, rect.bottom), (rect.centerx, rect.bottom + 6)
+        ])
 
     rotated = pygame.transform.rotate(base, angle_quant)
     if len(_bullet_cache) > 1000:
@@ -668,4 +733,5 @@ def draw_menu_starfield(screen, width=800, height=600):
                 pygame.draw.line(s_surf, (200, 220, 255, a), (tx, 1), (tx + 1, 1), 1)
             angle = math.atan2(ss['vy'], ss['vx'])
             rotated = pygame.transform.rotate(s_surf, -math.degrees(angle))
-            screen.blit(rotated, (int(ss['x']) - trail_len // 2, int(ss['y']) - 1))
+            rot_rect = rotated.get_rect(center=(int(ss['x']), int(ss['y'])))
+            screen.blit(rotated, rot_rect)

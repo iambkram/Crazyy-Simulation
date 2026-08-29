@@ -47,7 +47,7 @@ class VisualEffectsEngine:
         self.screen_shake     = [0.0, 0.0]
 
         # Reusable surfaces
-        self._thruster_surf = pygame.Surface((16, 16), pygame.SRCALPHA)
+        self._thruster_surf = pygame.Surface((24, 24), pygame.SRCALPHA)
         self._trail_surf    = pygame.Surface((12, 12), pygame.SRCALPHA)
 
         # Ambient ticker
@@ -193,8 +193,10 @@ class VisualEffectsEngine:
             r = max(1, int(p[7] * frac))
             alpha = int(220 * frac)
             self._thruster_surf.fill((0, 0, 0, 0))
-            pygame.draw.circle(self._thruster_surf, (*p[6], alpha), (r + 2, r + 2), r)
-            screen.blit(self._thruster_surf, (int(p[0]) - r, int(p[1]) - r))
+            center = r + 2
+            pygame.draw.circle(self._thruster_surf, (*p[6], alpha), (center, center), r)
+            screen.blit(self._thruster_surf, (int(p[0]) - center, int(p[1]) - center),
+                        special_flags=pygame.BLEND_ADD)
 
     # =========================================================================
     # 2. PLASMA BULLET TRAILS

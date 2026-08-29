@@ -3,13 +3,39 @@ import json
 import time
 import uuid
 import threading
-from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
-from google_auth_oauthlib.flow import InstalledAppFlow
-from cryptography.fernet import Fernet
-import bcrypt
-from dotenv import load_dotenv
+try:
+    from pymongo import MongoClient
+    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+except ImportError:
+    MongoClient = None
+    ConnectionFailure = Exception
+    ServerSelectionTimeoutError = Exception
+
+try:
+    from google_auth_oauthlib.flow import InstalledAppFlow
+except ImportError:
+    InstalledAppFlow = None
+
+try:
+    from cryptography.fernet import Fernet
+except ImportError:
+    Fernet = None
+
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        pass
+
 import sys
+import hashlib
+import base64
+import hmac
 from pathlib import Path
 import traceback
 
@@ -40,7 +66,10 @@ def load_environment():
             pass
 
     if not loaded:
-        load_dotenv(override=True)
+        try:
+            load_dotenv(override=True)
+        except Exception:
+            pass
 
 
 load_environment()
@@ -71,10 +100,15 @@ SCOPES = ['openid', 'https://www.googleapis.com/auth/userinfo.profile',
 
 # Encryption key for local session token
 SECRET_KEY = get_clean_env("SESSION_SECRET_KEY", "7bXN8gG3zS_dF3xKqO0t-Pj4mQ9rY6A1vU2wL5sV8eM=").encode()
-try:
-    fernet = Fernet(SECRET_KEY)
-except Exception:
-    fernet = Fernet(b'7bXN8gG3zS_dF3xKqO0t-Pj4mQ9rY6A1vU2wL5sV8eM=')
+fernet = None
+if Fernet is not None:
+    try:
+        fernet = Fernet(SECRET_KEY)
+    except Exception:
+        try:
+            fernet = Fernet(b'7bXN8gG3zS_dF3xKqO0t-Pj4mQ9rY6A1vU2wL5sV8eM=')
+        except Exception:
+            fernet = None
 
 # Absolute paths anchored to app directory
 app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -104,6 +138,8 @@ def init_db():
     global client, db
     if client is not None:
         return True
+    if MongoClient is None or not MONGO_URI:
+        return False
     try:
         client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
         client.server_info() # trigger exception if cannot connect
@@ -116,17 +152,53 @@ def init_db():
         return False
 
 def hash_password(password):
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    if bcrypt is not None:
+        try:
+            return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+        except Exception:
+            pass
+    # Pure Python PBKDF2 fallback (100% Android / cross-platform compatible)
+    salt = os.urandom(16)
+    kdf = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
+    return b"pbkdf2:" + base64.b64encode(salt) + b":" + base64.b64encode(kdf)
 
 def check_password(password, hashed):
-    return bcrypt.checkpw(password.encode('utf-8'), hashed)
+    if not hashed:
+        return False
+    if isinstance(hashed, str):
+        hashed = hashed.encode('utf-8')
+    if hashed.startswith(b"pbkdf2:"):
+        try:
+            parts = hashed.split(b":")
+            salt = base64.b64decode(parts[1])
+            expected = base64.b64decode(parts[2])
+            kdf = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
+            return hmac.compare_digest(kdf, expected)
+        except Exception:
+            return False
+    if bcrypt is not None:
+        try:
+            return bcrypt.checkpw(password.encode('utf-8'), hashed)
+        except Exception:
+            return False
+    return False
 
 def encrypt_session(data):
-    return fernet.encrypt(json.dumps(data).encode('utf-8'))
+    raw = json.dumps(data).encode('utf-8')
+    if fernet is not None:
+        try:
+            return fernet.encrypt(raw)
+        except Exception:
+            pass
+    return b"raw:" + base64.b64encode(raw)
 
 def decrypt_session(token):
     try:
-        return json.loads(fernet.decrypt(token).decode('utf-8'))
+        if token.startswith(b"raw:"):
+            return json.loads(base64.b64decode(token[4:]).decode('utf-8'))
+        if fernet is not None:
+            return json.loads(fernet.decrypt(token).decode('utf-8'))
+        return json.loads(base64.b64decode(token).decode('utf-8'))
     except Exception:
         return None
 
@@ -425,6 +497,8 @@ def reset_password(google_info, username, new_password):
 
 def bind_guest_to_google(google_info, username, password):
     """Upgrades a guest account to a google account, migrating data."""
+    if google_info is None:
+        return False
     if not init_db():
         return False
     
@@ -474,43 +548,55 @@ def queue_sync(local_save_data):
 
 def _sync_worker():
     global sync_queue, sync_in_progress
+    _db_fail_count = 0
     while is_running:
         if len(sync_queue) > 0 and current_session_id:
             sync_in_progress = True
             latest_save = sync_queue[-1]
             sync_queue.clear()
             
-            # Prevent wiping MongoDB with empty dict
-            if not latest_save or latest_save == {}:
-                if os.path.exists(LOCAL_SAVE_FILE):
+            try:
+                # Prevent wiping MongoDB with empty dict
+                if not latest_save or latest_save == {}:
+                    if os.path.exists(LOCAL_SAVE_FILE):
+                        try:
+                            with open(LOCAL_SAVE_FILE, "r") as f:
+                                latest_save = json.load(f)
+                        except Exception:
+                            latest_save = None
+                            
+                if latest_save and isinstance(latest_save, dict) and len(latest_save) > 0:
+                    if not init_db():
+                        _db_fail_count += 1
+                        backoff = min(30.0, 1.0 * (2 ** _db_fail_count))
+                        time.sleep(backoff)
+                        sync_in_progress = False
+                        continue
+                    _db_fail_count = 0
+                    col = db["registered_users"] if current_account_type == "google" else db["guest_users"]
                     try:
-                        with open(LOCAL_SAVE_FILE, "r") as f:
-                            latest_save = json.load(f)
-                    except Exception:
-                        latest_save = None
-                        
-            if latest_save and isinstance(latest_save, dict) and len(latest_save) > 0 and init_db():
-                col = db["registered_users"] if current_account_type == "google" else db["guest_users"]
-                try:
-                    user_doc = col.find_one({"_id": current_session_id})
-                    if user_doc:
-                        col.update_one(
-                            {"_id": current_session_id},
-                            {"$set": {"save_data": latest_save, "last_synced": time.time()}}
-                        )
-                    else:
-                        # New user doc creation
-                        new_doc = {
-                            "_id": current_session_id,
-                            "created_at": time.time(),
-                            "save_data": latest_save
-                        }
-                        if current_account_type == "guest":
-                            new_doc["username"] = current_session_id
-                        col.insert_one(new_doc)
-                except Exception as e:
-                    print(f"Sync error: {e}")
-            sync_in_progress = False
+                        user_doc = col.find_one({"_id": current_session_id})
+                        if user_doc:
+                            col.update_one(
+                                {"_id": current_session_id},
+                                {"$set": {"save_data": latest_save, "last_synced": time.time()}}
+                            )
+                        else:
+                            # New user doc creation
+                            new_doc = {
+                                "_id": current_session_id,
+                                "created_at": time.time(),
+                                "save_data": latest_save
+                            }
+                            if current_account_type == "guest":
+                                new_doc["username"] = current_session_id
+                            col.insert_one(new_doc)
+                    except Exception as e:
+                        print(f"Sync error: {e}")
+            except Exception as e:
+                print(f"Sync worker error: {e}")
+            finally:
+                sync_in_progress = False
         time.sleep(1.0)
 
 def start_sync_thread(save_file_path):

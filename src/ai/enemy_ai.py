@@ -243,7 +243,7 @@ class EnemyAI:
         dmg = max(3, min(self.level, 5)) * 5
         for angle_deg in [-30, -15, 0, 15, 30]:
             rad = math.radians(angle_deg + 90)
-            spd = 4.0
+            spd = 6.8
             self.pending_bullets.append({
                 'rect': pygame.Rect(self.rect.centerx - 5, self.rect.bottom, 10, 16),
                 'damage': dmg, 'color': ORANGE,
@@ -290,7 +290,7 @@ class EnemyAI:
                 dx = px - self.rect.centerx
                 dy = py - self.rect.centery
                 dist = max(1, math.hypot(dx, dy))
-                spd = 5.0
+                spd = 7.2
                 dmg = max(4, min(self.level // 3, 15))
                 self.pending_bullets.append({
                     'rect': pygame.Rect(self.rect.centerx - 5, self.rect.bottom, 10, 14),
@@ -327,7 +327,7 @@ class EnemyAI:
             # 360-degree fire burst
             for angle_deg in range(0, 360, 30):
                 rad = math.radians(angle_deg)
-                spd = 4.5
+                spd = 6.6
                 dmg = max(5, min(self.level // 2, 18))
                 self.pending_bullets.append({
                     'rect': pygame.Rect(self.rect.centerx - 5, self.rect.centery, 10, 10),
@@ -363,7 +363,7 @@ class EnemyAI:
             dx2 = px - self.rect.centerx
             dy2 = py - self.rect.centery
             dist = max(1, math.hypot(dx2, dy2))
-            spd = 5.5
+            spd = 8.0
             dmg = max(6, min(self.level // 2, 20))
             self.pending_bullets.append({
                 'rect': pygame.Rect(self.rect.centerx - 5, self.rect.bottom, 10, 18),
@@ -734,12 +734,12 @@ def _ai_heavy(e, bullets, player_rect, level, env_speed_mult, ai_aggression, ai_
             dmg = max(3, min(level, 5)) * 5
             for angle_deg in [-30, -15, 0, 15, 30]:
                 rad = math.radians(angle_deg + 90)
-                spd = 4.0
+                spd = 6.8
                 new_bullets.append({
                     'rect': pygame.Rect(e['rect'].centerx - 5, e['rect'].bottom, 10, 16),
                     'damage': dmg, 'color': ORANGE,
-                    'vx': math.cos(rad - math.pi / 2) * spd,
-                    'vy': math.sin(rad - math.pi / 2) * spd,
+                    'vx': math.cos(rad) * spd,
+                    'vy': math.sin(rad) * spd,
                     'btype': 'heavy'
                 })
         e['sub_timer'] += 1
@@ -801,7 +801,7 @@ def _ai_berserker(e, bullets, player_rect, level, env_speed_mult, ai_aggression)
     elif cycle == 180:
         for angle_deg in range(0, 360, 30):
             rad = math.radians(angle_deg)
-            spd = 4.5
+            spd = 6.6
             dmg = max(5, min(level // 2, 18))
             new_bullets.append({
                 'rect': pygame.Rect(e['rect'].centerx - 5, e['rect'].centery, 10, 10),
@@ -833,7 +833,7 @@ def _ai_commander(e, bullets, player_rect, level, env_speed_mult, ai_aggression)
         dx2 = px - e['rect'].centerx
         dy2 = py - e['rect'].centery
         dist = max(1, math.hypot(dx2, dy2))
-        spd = 5.5
+        spd = 8.0
         dmg = max(6, min(level // 2, 20))
         new_bullets.append({
             'rect': pygame.Rect(e['rect'].centerx - 5, e['rect'].bottom, 10, 18),

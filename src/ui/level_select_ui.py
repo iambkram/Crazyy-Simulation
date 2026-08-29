@@ -246,9 +246,11 @@ def render_level_select(screen, mx, my, m_c, m_u, key_escape, tap_snd, ui_pulse_
 
             # Star rating indicator (mini 3-star)
             for si in range(3):
-                star_col = NEON_GOLD if is_unlocked else (50, 50, 50)
+                star_col = (50, 50, 60)
                 pygame.draw.circle(screen, star_col,
                                    (btn.x + 22 + si * 14, btn.bottom - 12), 4)
+                pygame.draw.circle(screen, (70, 70, 80),
+                                   (btn.x + 22 + si * 14, btn.bottom - 12), 4, 1)
 
             if m_u and is_h and level_drag_dist < 12:
                 tap_snd.play()
