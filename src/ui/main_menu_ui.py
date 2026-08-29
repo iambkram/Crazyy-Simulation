@@ -11,8 +11,9 @@ from assets import (FONT_MENU_TITLE, FONT_MENU_SUB, FONT_MENU_CARD_MAIN,
                     draw_badge)
 
 # Reusable scratch surfaces for menu performance
-_menu_card_surf = pygame.Surface((340, 66), pygame.SRCALPHA)
-_hangar_surf = pygame.Surface((396, 440), pygame.SRCALPHA)
+_menu_card_surf = pygame.Surface((340, 68), pygame.SRCALPHA)
+_card_glow_surf = pygame.Surface((364, 92), pygame.SRCALPHA)
+_hangar_surf = pygame.Surface((396, 442), pygame.SRCALPHA)
 _hangar_particles = []
 
 
@@ -21,12 +22,14 @@ def draw_vector_icon(screen, icon_type, center_x, center_y, color, scale=1.0):
     cx, cy = int(center_x), int(center_y)
     
     if icon_type == "campaign":
+        # Holographic diamond crosshair / target vector
         pts = [(cx, cy - int(9 * scale)), (cx + int(9 * scale), cy),
                (cx, cy + int(9 * scale)), (cx - int(9 * scale), cy)]
         pygame.draw.polygon(screen, color, pts, 2)
         pygame.draw.circle(screen, color, (cx, cy), max(2, int(3 * scale)))
         
     elif icon_type == "armory":
+        # Starship shield crest
         pts = [(cx, cy - int(10 * scale)), (cx + int(8 * scale), cy - int(3 * scale)),
                (cx + int(5 * scale), cy + int(9 * scale)), (cx, cy + int(12 * scale)),
                (cx - int(5 * scale), cy + int(9 * scale)), (cx - int(8 * scale), cy - int(3 * scale))]
@@ -34,6 +37,7 @@ def draw_vector_icon(screen, icon_type, center_x, center_y, color, scale=1.0):
         pygame.draw.line(screen, color, (cx, cy - int(5 * scale)), (cx, cy + int(6 * scale)), 2)
         
     elif icon_type == "settings":
+        # Tactical gear vector
         pygame.draw.circle(screen, color, (cx, cy), int(7 * scale), 2)
         for i in range(4):
             ang = i * (math.pi / 4)
@@ -44,6 +48,7 @@ def draw_vector_icon(screen, icon_type, center_x, center_y, color, scale=1.0):
             pygame.draw.line(screen, color, (int(tx1), int(ty1)), (int(tx2), int(ty2)), 2)
             
     elif icon_type == "multiplayer":
+        # Cyber lock vector
         rect = pygame.Rect(cx - int(7 * scale), cy - int(3 * scale), int(14 * scale), int(12 * scale))
         pygame.draw.rect(screen, color, rect, width=2, border_radius=3)
         pygame.draw.arc(screen, color, (cx - int(5 * scale), cy - int(11 * scale), int(10 * scale), int(12 * scale)),
@@ -51,9 +56,17 @@ def draw_vector_icon(screen, icon_type, center_x, center_y, color, scale=1.0):
         pygame.draw.circle(screen, color, (cx, cy + int(3 * scale)), 2)
         
     elif icon_type == "quit":
+        # Cyber power / disconnect glyph
         pygame.draw.arc(screen, color, (cx - int(8 * scale), cy - int(8 * scale), int(16 * scale), int(16 * scale)),
                         0.5, math.pi * 2 - 0.5, 2)
         pygame.draw.line(screen, color, (cx, cy - int(9 * scale)), (cx, cy - int(1 * scale)), 2)
+
+    elif icon_type == "chevron":
+        # Right arrow chevron
+        pts = [(cx - int(4 * scale), cy - int(6 * scale)),
+               (cx + int(3 * scale), cy),
+               (cx - int(4 * scale), cy + int(6 * scale))]
+        pygame.draw.lines(screen, color, False, pts, 2)
 
 
 def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_down, key_tab,
@@ -61,8 +74,8 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
                      unlocked_hp, unlocked_speed, unlocked_bullets, unlocked_firerate,
                      hp_step, speed_step, bullet_step, firerate_step, focused_btn):
     """
-    Renders the AAA Sci-Fi Cyberpunk Main Menu.
-    Returns: (next_state, focused_btn, running, click_cooldown, m_c, should_logout)
+    Renders the AAA Sci-Fi Cyberpunk Main Menu with responsive neon glow and layout isolation.
+    Returns: (next_state, focused_btn, running, next_click_cooldown, m_c, should_logout)
     """
     global _hangar_particles
     
@@ -82,72 +95,74 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
         return 0, focused_btn, False, 12, False, False
 
     # =========================================================================
-    # 1. TOP COMMAND DECK (HEADER)
+    # 1. TOP COMMAND DECK (HEADER BAR - PERFECTLY NON-OVERLAPPING)
     # =========================================================================
+    # --- A. Left: Pilot Identity Card ---
     profile_name = cloud_sync.current_username or "Guest Pilot"
-    if len(profile_name) > 13:
-        profile_name = profile_name[:11] + ".."
+    if len(profile_name) > 12:
+        profile_name = profile_name[:10] + ".."
 
-    prof_card = pygame.Rect(24, 14, 185, 38)
+    prof_card = pygame.Rect(20, 12, 175, 36)
     prof_bg = pygame.Surface((prof_card.width, prof_card.height), pygame.SRCALPHA)
-    pygame.draw.rect(prof_bg, (12, 16, 30, 210), prof_bg.get_rect(), border_radius=10)
-    pygame.draw.rect(prof_bg, (*NEON_CYAN[:3], 90), prof_bg.get_rect(), width=1, border_radius=10)
+    pygame.draw.rect(prof_bg, (12, 16, 30, 220), prof_bg.get_rect(), border_radius=8)
+    pygame.draw.rect(prof_bg, (*NEON_CYAN[:3], 90), prof_bg.get_rect(), width=1, border_radius=8)
     screen.blit(prof_bg, prof_card.topleft)
 
     dot_glow = int(180 + 75 * math.sin(ui_pulse_t * 3.5))
-    pygame.draw.circle(screen, (*NEON_GREEN[:3], dot_glow), (prof_card.x + 16, prof_card.centery - 5), 4)
-    pygame.draw.circle(screen, WHITE, (prof_card.x + 16, prof_card.centery - 5), 2)
-    draw_text(profile_name, FONT_MENU_SUB, WHITE, prof_card.x + 28, prof_card.centery - 6, center=False)
-    draw_text("FLIGHT CDR // ONLINE", FONT_MENU_TELEMETRY, (100, 140, 180), prof_card.x + 28, prof_card.centery + 7, center=False)
+    pygame.draw.circle(screen, (*NEON_GREEN[:3], dot_glow), (prof_card.x + 14, prof_card.centery - 4), 4)
+    pygame.draw.circle(screen, WHITE, (prof_card.x + 14, prof_card.centery - 4), 2)
+    draw_text(profile_name, FONT_MENU_SUB, WHITE, prof_card.x + 26, prof_card.centery - 6, center=False)
+    draw_text("PILOT // ONLINE", FONT_MENU_TELEMETRY, (100, 140, 180), prof_card.x + 26, prof_card.centery + 6, center=False)
 
-    # Title
-    title_glow_a = int(70 + 35 * math.sin(ui_pulse_t * 2.0))
-    for goff, ga in [(3, title_glow_a // 3), (1, title_glow_a)]:
+    # --- B. Center: Logo & Subtitle ---
+    title_glow_a = int(60 + 30 * math.sin(ui_pulse_t * 2.0))
+    for goff, ga in [(2, title_glow_a // 2), (1, title_glow_a)]:
         ts = FONT_MENU_TITLE.render("CRAZYY SIMULATION", True, NEON_CYAN)
         ts.set_alpha(ga)
-        screen.blit(ts, ts.get_rect(center=(WIDTH // 2 + goff, 28)))
-    draw_text_shadow("CRAZYY SIMULATION", FONT_MENU_TITLE, WHITE, WIDTH // 2, 28,
+        screen.blit(ts, ts.get_rect(center=(WIDTH // 2 + goff, 24)))
+    draw_text_shadow("CRAZYY SIMULATION", FONT_MENU_TITLE, WHITE, WIDTH // 2, 24,
                      shadow_color=(0, 40, 80), offset=2)
 
     sub_text = "//  COSMIC CIVIL WAR  //"
-    draw_text(sub_text, FONT_MENU_SUB, NEON_GOLD, WIDTH // 2, 54, center=True)
-    pygame.draw.line(screen, (*NEON_CYAN, 80), (WIDTH // 2 - 180, 54), (WIDTH // 2 - 95, 54), 1)
-    pygame.draw.line(screen, (*NEON_CYAN, 80), (WIDTH // 2 + 95, 54), (WIDTH // 2 + 180, 54), 1)
+    draw_text(sub_text, FONT_MENU_SUB, NEON_GOLD, WIDTH // 2, 48, center=True)
+    pygame.draw.line(screen, (*NEON_CYAN, 70), (WIDTH // 2 - 160, 48), (WIDTH // 2 - 80, 48), 1)
+    pygame.draw.line(screen, (*NEON_CYAN, 70), (WIDTH // 2 + 80, 48), (WIDTH // 2 + 160, 48), 1)
 
-    # Credits & Sync
-    coin_pill = pygame.Rect(WIDTH - 224, 14, 124, 38)
+    # --- C. Right: Credits & Cloud Sync Pill ---
+    coin_pill = pygame.Rect(580, 12, 125, 36)
     coin_bg = pygame.Surface((coin_pill.width, coin_pill.height), pygame.SRCALPHA)
-    pygame.draw.rect(coin_bg, (12, 16, 30, 210), coin_bg.get_rect(), border_radius=10)
-    pygame.draw.rect(coin_bg, (*NEON_GOLD[:3], 100), coin_bg.get_rect(), width=1, border_radius=10)
+    pygame.draw.rect(coin_bg, (12, 16, 30, 220), coin_bg.get_rect(), border_radius=8)
+    pygame.draw.rect(coin_bg, (*NEON_GOLD[:3], 100), coin_bg.get_rect(), width=1, border_radius=8)
     screen.blit(coin_bg, coin_pill.topleft)
-    screen.blit(coin_icon, (coin_pill.x + 8, coin_pill.y + 7))
-    draw_text(f"{total_coins:,}", FONT_MENU_SUB, NEON_GOLD, coin_pill.x + 36, coin_pill.centery - 6, center=False)
-    draw_text("CREDITS (CC)", FONT_MENU_TELEMETRY, (160, 140, 90), coin_pill.x + 36, coin_pill.centery + 7, center=False)
+    screen.blit(coin_icon, (coin_pill.x + 6, coin_pill.y + 6))
+    draw_text(f"{total_coins:,}", FONT_MENU_SUB, NEON_GOLD, coin_pill.x + 34, coin_pill.centery - 6, center=False)
+    draw_text("CREDITS", FONT_MENU_TELEMETRY, (160, 140, 90), coin_pill.x + 34, coin_pill.centery + 6, center=False)
 
-    cloud_pill = pygame.Rect(WIDTH - 92, 14, 68, 38)
+    cloud_pill = pygame.Rect(715, 12, 65, 36)
     cloud_bg = pygame.Surface((cloud_pill.width, cloud_pill.height), pygame.SRCALPHA)
-    pygame.draw.rect(cloud_bg, (12, 16, 30, 210), cloud_bg.get_rect(), border_radius=10)
-    pygame.draw.rect(cloud_bg, (*NEON_CYAN[:3], 80), cloud_bg.get_rect(), width=1, border_radius=10)
+    pygame.draw.rect(cloud_bg, (12, 16, 30, 220), cloud_bg.get_rect(), border_radius=8)
+    pygame.draw.rect(cloud_bg, (*NEON_CYAN[:3], 80), cloud_bg.get_rect(), width=1, border_radius=8)
     screen.blit(cloud_bg, cloud_pill.topleft)
     draw_text("CLOUD", FONT_MENU_TELEMETRY, NEON_CYAN, cloud_pill.centerx, cloud_pill.centery - 6, center=True)
-    draw_text("SYNCED", FONT_MENU_TELEMETRY, NEON_GREEN, cloud_pill.centerx, cloud_pill.centery + 7, center=True)
+    draw_text("SYNCED", FONT_MENU_TELEMETRY, NEON_GREEN, cloud_pill.centerx, cloud_pill.centery + 6, center=True)
 
-    pygame.draw.line(screen, (30, 45, 75), (24, 70), (WIDTH - 24, 70), 1)
+    pygame.draw.line(screen, (30, 45, 75), (20, 62), (WIDTH - 20, 62), 1)
 
     # =========================================================================
-    # 2. LEFT NAVIGATION CONSOLE (CYBER GLASS CARDS)
+    # 2. LEFT NAVIGATION CONSOLE (CYBER CARDS WITH MULTI-LAYER NEON GLOW)
     # =========================================================================
-    card_y = 85
+    card_y = 76
     card_w = 340
-    card_h = 66
+    card_h = 68
     card_gap = 10
     
     target_state = 0
     should_quit = False
+    next_click_cooldown = 0
     
     for idx, (title, sub, icon_t, accent_col, target) in enumerate(nav_items):
         cur_y = card_y + idx * (card_h + card_gap)
-        card_rect = pygame.Rect(24, cur_y, card_w, card_h)
+        card_rect = pygame.Rect(20, cur_y, card_w, card_h)
         
         is_hover = card_rect.collidepoint(mx, my)
         is_focused = (idx == focused_btn)
@@ -160,45 +175,67 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
         slide_ox = 6 if active else 0
         render_rect = pygame.Rect(card_rect.x + slide_ox, card_rect.y, card_rect.width - slide_ox, card_rect.height)
         
+        # --- Multi-Layer Outer Neon Glow ---
+        if active:
+            _card_glow_surf.fill((0, 0, 0, 0))
+            glow_pad = 8
+            # Outer soft glow bloom
+            glow_rect_inner = pygame.Rect(glow_pad, glow_pad, render_rect.width, render_rect.height)
+            glow_pulse = int(90 + 40 * math.sin(ui_pulse_t * 4.0))
+            pygame.draw.rect(_card_glow_surf, (*accent_col[:3], glow_pulse // 3),
+                             pygame.Rect(glow_pad - 4, glow_pad - 4, render_rect.width + 8, render_rect.height + 8),
+                             border_radius=14)
+            pygame.draw.rect(_card_glow_surf, (*accent_col[:3], glow_pulse),
+                             glow_rect_inner, width=2, border_radius=12)
+            screen.blit(_card_glow_surf, (render_rect.x - glow_pad, render_rect.y - glow_pad), special_flags=pygame.BLEND_ADD)
+            
+        # Draw Glassmorphic Card Surface
         _menu_card_surf.fill((0, 0, 0, 0))
-        bg_alpha = 240 if active else 190
-        card_fill = (18, 24, 44, bg_alpha) if active else (10, 14, 26, bg_alpha)
-        border_col = (*accent_col[:3], 230 if active else 90)
+        bg_alpha = 245 if active else 190
+        card_fill = (18, 26, 48, bg_alpha) if active else (10, 14, 26, bg_alpha)
+        border_col = (*accent_col[:3], 255 if active else 70)
         
-        pygame.draw.rect(_menu_card_surf, card_fill, _menu_card_surf.get_rect(), border_radius=12)
-        pygame.draw.rect(_menu_card_surf, border_col, _menu_card_surf.get_rect(), width=2 if active else 1, border_radius=12)
+        pygame.draw.rect(_menu_card_surf, card_fill, (0, 0, render_rect.width, render_rect.height), border_radius=10)
+        pygame.draw.rect(_menu_card_surf, border_col, (0, 0, render_rect.width, render_rect.height), width=2 if active else 1, border_radius=10)
         
-        stripe_h = _menu_card_surf.get_height() if active else 28
-        stripe_y = (_menu_card_surf.get_height() - stripe_h) // 2
+        # Left neon indicator stripe
+        stripe_h = render_rect.height if active else 28
+        stripe_y = (render_rect.height - stripe_h) // 2
         pygame.draw.rect(_menu_card_surf, accent_col, (0, stripe_y, 4 if active else 3, stripe_h), border_radius=2)
         
+        # Active hover laser scanline
         if active:
             scan_y = int((ui_pulse_t * 60) % card_h)
-            pygame.draw.line(_menu_card_surf, (*accent_col[:3], 60), (4, scan_y), (card_w - 4, scan_y), 1)
+            pygame.draw.line(_menu_card_surf, (*accent_col[:3], 80), (4, scan_y), (render_rect.width - 4, scan_y), 1)
             
         screen.blit(_menu_card_surf, render_rect.topleft)
         
+        # Vector Icon inside card
         icon_cx = render_rect.x + 30
         icon_cy = render_rect.centery
-        draw_vector_icon(screen, icon_t, icon_cx, icon_cy, accent_col if active else (130, 150, 180), scale=1.0)
+        draw_vector_icon(screen, icon_t, icon_cx, icon_cy, accent_col if active else (120, 140, 170), scale=1.0)
         
-        title_col = WHITE if active else (220, 230, 245) if target != "locked" else (120, 130, 150)
-        desc_col = accent_col if active else (100, 130, 160) if target != "locked" else (80, 90, 110)
+        # Typography inside card
+        title_col = WHITE if active else (220, 230, 245) if target != "locked" else (110, 120, 140)
+        desc_col = accent_col if active else (100, 130, 160) if target != "locked" else (70, 80, 100)
         
         draw_text(title, FONT_MENU_CARD_MAIN, title_col, render_rect.x + 56, render_rect.centery - 11, center=False)
         draw_text(sub, FONT_MENU_CARD_DESC, desc_col, render_rect.x + 56, render_rect.centery + 10, center=False)
         
+        # Badges & Indicators
         if target == "locked":
             badge_r = pygame.Rect(render_rect.right - 96, render_rect.centery - 10, 88, 20)
             pygame.draw.rect(screen, (35, 15, 20), badge_r, border_radius=10)
             pygame.draw.rect(screen, (*RED[:3], 180), badge_r, width=1, border_radius=10)
             draw_text("COMING v2.0", FONT_TINY, RED, badge_r.centerx, badge_r.centery)
         elif active:
-            draw_text("▶", FONT_MENU_SUB, accent_col, render_rect.right - 18, render_rect.centery)
+            draw_vector_icon(screen, "chevron", render_rect.right - 18, render_rect.centery, accent_col, scale=1.2)
             
+        # Click / Activation (Instantly responsive)
         activated = (m_c and is_hover) or (key_enter and is_focused)
         if activated and target != "locked":
             tap_snd.play()
+            next_click_cooldown = 12
             if target == "quit":
                 should_quit = True
             else:
@@ -207,11 +244,11 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
     # =========================================================================
     # 3. RIGHT SHIP HANGAR & LIVE TELEMETRY BAY
     # =========================================================================
-    hangar_rect = pygame.Rect(380, 85, 396, 440)
+    hangar_rect = pygame.Rect(380, 76, 400, 452)
     
     _hangar_surf.fill((0, 0, 0, 0))
-    pygame.draw.rect(_hangar_surf, (8, 12, 24, 200), _hangar_surf.get_rect(), border_radius=14)
-    pygame.draw.rect(_hangar_surf, (*NEON_CYAN[:3], 80), _hangar_surf.get_rect(), width=1, border_radius=14)
+    pygame.draw.rect(_hangar_surf, (8, 12, 24, 200), _hangar_surf.get_rect(), border_radius=12)
+    pygame.draw.rect(_hangar_surf, (*NEON_CYAN[:3], 80), _hangar_surf.get_rect(), width=1, border_radius=12)
     screen.blit(_hangar_surf, hangar_rect.topleft)
     
     draw_corner_brackets(screen, hangar_rect, NEON_CYAN, size=12, width=1)
@@ -287,8 +324,8 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
     pygame.draw.circle(screen, WHITE, (ship_cx, ship_cy + float_y - 4), 4)
     pygame.draw.circle(screen, NEON_CYAN, (ship_cx, ship_cy + float_y - 4), 7, 1)
 
-    # Telemetry stat grid
-    stat_box_y = hangar_rect.y + 265
+    # Telemetry Stat Grid (Clean 2x2 cards with distinct label/value placement)
+    stat_box_y = hangar_rect.y + 270
     pygame.draw.line(screen, (30, 45, 75), (hangar_rect.x + 16, stat_box_y - 12), (hangar_rect.right - 16, stat_box_y - 12), 1)
     
     stats = [
@@ -299,57 +336,64 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
     ]
     
     for i, (label, val, sub_stat, col) in enumerate(stats):
-        bx = hangar_rect.x + 18 + (i % 2) * 182
-        by = stat_box_y + (i // 2) * 50
-        s_rect = pygame.Rect(bx, by, 174, 42)
+        bx = hangar_rect.x + 16 + (i % 2) * 186
+        by = stat_box_y + (i // 2) * 52
+        s_rect = pygame.Rect(bx, by, 180, 44)
         
         s_bg = pygame.Surface((s_rect.width, s_rect.height), pygame.SRCALPHA)
-        pygame.draw.rect(s_bg, (14, 18, 34, 180), s_bg.get_rect(), border_radius=8)
-        pygame.draw.rect(s_bg, (*col[:3], 60), s_bg.get_rect(), width=1, border_radius=8)
+        pygame.draw.rect(s_bg, (14, 18, 34, 190), s_bg.get_rect(), border_radius=8)
+        pygame.draw.rect(s_bg, (*col[:3], 70), s_bg.get_rect(), width=1, border_radius=8)
         screen.blit(s_bg, s_rect.topleft)
         
-        draw_text(label, FONT_MENU_TELEMETRY, (120, 140, 170), s_rect.x + 8, s_rect.centery - 8, center=False)
-        draw_text(val, FONT_MENU_SUB, WHITE, s_rect.x + 8, s_rect.centery + 7, center=False)
-        draw_text(sub_stat, FONT_MENU_TELEMETRY, col, s_rect.right - 8, s_rect.centery, center=False)
+        draw_text(label, FONT_MENU_TELEMETRY, (120, 140, 170), s_rect.x + 8, s_rect.y + 7, center=False)
+        draw_text(val, FONT_MENU_SUB, WHITE, s_rect.x + 8, s_rect.y + 24, center=False)
+        # Place sub_stat badge aligned cleanly to the right
+        draw_badge(screen, sub_stat, FONT_TINY, s_rect.right - 34, s_rect.centery,
+                   bg_color=(20, 24, 45), text_color=col, border_color=col)
 
-    ready_pill = pygame.Rect(hangar_rect.x + 24, hangar_rect.bottom - 34, hangar_rect.width - 48, 22)
+    ready_pill = pygame.Rect(hangar_rect.x + 20, hangar_rect.bottom - 32, hangar_rect.width - 40, 22)
     pygame.draw.rect(screen, (10, 30, 20), ready_pill, border_radius=11)
-    pygame.draw.rect(screen, (*NEON_GREEN[:3], 120), ready_pill, width=1, border_radius=11)
+    pygame.draw.rect(screen, (*NEON_GREEN[:3], 140), ready_pill, width=1, border_radius=11)
     draw_text("● ALL SYSTEMS 100% COMBAT READY", FONT_MENU_TELEMETRY, NEON_GREEN, ready_pill.centerx, ready_pill.centery)
 
     # =========================================================================
     # 4. BOTTOM ACTION DOCK
     # =========================================================================
-    btn_logout = pygame.Rect(24, 552, 130, 32)
+    # --- A. Bottom Left: Quick Logout ---
+    btn_logout = pygame.Rect(20, 552, 130, 32)
     is_h_logout = btn_logout.collidepoint(mx, my)
     
     lo_bg = pygame.Surface((btn_logout.width, btn_logout.height), pygame.SRCALPHA)
-    pygame.draw.rect(lo_bg, (30, 12, 18, 210) if is_h_logout else (16, 12, 20, 180), lo_bg.get_rect(), border_radius=8)
-    pygame.draw.rect(lo_bg, (*RED[:3], 200 if is_h_logout else 80), lo_bg.get_rect(), width=1, border_radius=8)
+    pygame.draw.rect(lo_bg, (30, 12, 18, 220) if is_h_logout else (16, 12, 20, 180), lo_bg.get_rect(), border_radius=8)
+    pygame.draw.rect(lo_bg, (*RED[:3], 220 if is_h_logout else 90), lo_bg.get_rect(), width=1, border_radius=8)
     screen.blit(lo_bg, btn_logout.topleft)
-    draw_text("⎋  LOG OUT", FONT_MENU_SUB, RED if is_h_logout else (220, 120, 130), btn_logout.centerx, btn_logout.centery)
+    draw_text("[ ESC ] LOG OUT", FONT_MENU_SUB, RED if is_h_logout else (220, 130, 140), btn_logout.centerx, btn_logout.centery)
     
     should_logout = False
     if m_c and is_h_logout:
         tap_snd.play()
+        next_click_cooldown = 12
         should_logout = True
 
+    # --- B. Bottom Center: System Watermark ---
     draw_text("CRAZYY ENGINE  •  v1.0.0  •  CREATED BY @IAMBKRAM", FONT_MENU_TELEMETRY, (70, 95, 130), WIDTH // 2 + 10, 568)
 
-    btn_report = pygame.Rect(WIDTH - 164, 552, 140, 32)
+    # --- C. Bottom Right: Bug Report ---
+    btn_report = pygame.Rect(WIDTH - 160, 552, 140, 32)
     is_h_report = btn_report.collidepoint(mx, my)
     
     rep_bg = pygame.Surface((btn_report.width, btn_report.height), pygame.SRCALPHA)
-    pygame.draw.rect(rep_bg, (12, 24, 38, 210) if is_h_report else (10, 16, 28, 180), rep_bg.get_rect(), border_radius=8)
-    pygame.draw.rect(rep_bg, (*NEON_CYAN[:3], 200 if is_h_report else 80), rep_bg.get_rect(), width=1, border_radius=8)
+    pygame.draw.rect(rep_bg, (12, 26, 42, 220) if is_h_report else (10, 16, 28, 180), rep_bg.get_rect(), border_radius=8)
+    pygame.draw.rect(rep_bg, (*NEON_CYAN[:3], 220 if is_h_report else 90), rep_bg.get_rect(), width=1, border_radius=8)
     screen.blit(rep_bg, btn_report.topleft)
-    draw_text("🐛  REPORT ISSUES", FONT_MENU_SUB, NEON_CYAN if is_h_report else (120, 180, 220), btn_report.centerx, btn_report.centery)
+    draw_text("[ ! ] REPORT ISSUES", FONT_MENU_SUB, NEON_CYAN if is_h_report else (120, 180, 220), btn_report.centerx, btn_report.centery)
     
     if m_c and is_h_report:
         tap_snd.play()
+        next_click_cooldown = 12
         try:
             webbrowser.open("https://github.com/iambkram/Crazyy-Simulation/issues")
         except Exception as e:
             print("Error opening issues page:", e)
 
-    return target_state, focused_btn, not should_quit, 12, False, should_logout
+    return target_state, focused_btn, not should_quit, next_click_cooldown, False, should_logout

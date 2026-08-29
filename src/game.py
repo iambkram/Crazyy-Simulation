@@ -1034,7 +1034,9 @@ while running:
             unlocked_hp, unlocked_speed, unlocked_bullets, unlocked_firerate,
             hp_step, speed_step, bullet_step, firerate_step, focused_btn
         )
-        target_state, focused_btn, running, click_cooldown, m_c, should_logout = res
+        target_state, focused_btn, running, new_click_cd, m_c, should_logout = res
+        if new_click_cd > 0:
+            click_cooldown = new_click_cd
 
         if should_logout:
             cloud_sync.clear_local_session()

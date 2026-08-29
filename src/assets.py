@@ -35,8 +35,8 @@ try:
     
     # Modern Sci-Fi Main Menu Fonts
     _menu_font_fam = "Bahnschrift" if "bahnschrift" in pygame.font.get_fonts() else "Segoe UI"
-    FONT_MENU_TITLE     = pygame.font.SysFont(_menu_font_fam, 46, bold=True)
-    FONT_MENU_SUB       = pygame.font.SysFont(_menu_font_fam, 13, bold=True)
+    FONT_MENU_TITLE     = pygame.font.SysFont(_menu_font_fam, 30, bold=True)
+    FONT_MENU_SUB       = pygame.font.SysFont(_menu_font_fam, 12, bold=True)
     FONT_MENU_CARD_MAIN = pygame.font.SysFont(_menu_font_fam, 18, bold=True)
     FONT_MENU_CARD_DESC = pygame.font.SysFont("Segoe UI", 11)
     FONT_MENU_TELEMETRY = pygame.font.SysFont("Consolas", 11)
