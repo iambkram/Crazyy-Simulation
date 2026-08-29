@@ -10,10 +10,10 @@ from assets import (FONT_MENU_TITLE, FONT_MENU_SUB, FONT_MENU_CARD_MAIN,
                     FONT_UI, draw_text, draw_text_shadow, draw_corner_brackets,
                     draw_badge)
 
-# Reusable scratch surfaces for menu performance
+# Reusable scratch surfaces for high-performance rendering
 _menu_card_surf = pygame.Surface((340, 68), pygame.SRCALPHA)
 _card_glow_surf = pygame.Surface((364, 92), pygame.SRCALPHA)
-_hangar_surf = pygame.Surface((396, 442), pygame.SRCALPHA)
+_hangar_surf = pygame.Surface((400, 452), pygame.SRCALPHA)
 _hangar_particles = []
 
 
@@ -22,14 +22,12 @@ def draw_vector_icon(screen, icon_type, center_x, center_y, color, scale=1.0):
     cx, cy = int(center_x), int(center_y)
     
     if icon_type == "campaign":
-        # Holographic diamond crosshair / target vector
         pts = [(cx, cy - int(9 * scale)), (cx + int(9 * scale), cy),
                (cx, cy + int(9 * scale)), (cx - int(9 * scale), cy)]
         pygame.draw.polygon(screen, color, pts, 2)
         pygame.draw.circle(screen, color, (cx, cy), max(2, int(3 * scale)))
         
     elif icon_type == "armory":
-        # Starship shield crest
         pts = [(cx, cy - int(10 * scale)), (cx + int(8 * scale), cy - int(3 * scale)),
                (cx + int(5 * scale), cy + int(9 * scale)), (cx, cy + int(12 * scale)),
                (cx - int(5 * scale), cy + int(9 * scale)), (cx - int(8 * scale), cy - int(3 * scale))]
@@ -37,7 +35,6 @@ def draw_vector_icon(screen, icon_type, center_x, center_y, color, scale=1.0):
         pygame.draw.line(screen, color, (cx, cy - int(5 * scale)), (cx, cy + int(6 * scale)), 2)
         
     elif icon_type == "settings":
-        # Tactical gear vector
         pygame.draw.circle(screen, color, (cx, cy), int(7 * scale), 2)
         for i in range(4):
             ang = i * (math.pi / 4)
@@ -48,7 +45,6 @@ def draw_vector_icon(screen, icon_type, center_x, center_y, color, scale=1.0):
             pygame.draw.line(screen, color, (int(tx1), int(ty1)), (int(tx2), int(ty2)), 2)
             
     elif icon_type == "multiplayer":
-        # Cyber lock vector
         rect = pygame.Rect(cx - int(7 * scale), cy - int(3 * scale), int(14 * scale), int(12 * scale))
         pygame.draw.rect(screen, color, rect, width=2, border_radius=3)
         pygame.draw.arc(screen, color, (cx - int(5 * scale), cy - int(11 * scale), int(10 * scale), int(12 * scale)),
@@ -56,13 +52,11 @@ def draw_vector_icon(screen, icon_type, center_x, center_y, color, scale=1.0):
         pygame.draw.circle(screen, color, (cx, cy + int(3 * scale)), 2)
         
     elif icon_type == "quit":
-        # Cyber power / disconnect glyph
         pygame.draw.arc(screen, color, (cx - int(8 * scale), cy - int(8 * scale), int(16 * scale), int(16 * scale)),
                         0.5, math.pi * 2 - 0.5, 2)
         pygame.draw.line(screen, color, (cx, cy - int(9 * scale)), (cx, cy - int(1 * scale)), 2)
 
     elif icon_type == "chevron":
-        # Right arrow chevron
         pts = [(cx - int(4 * scale), cy - int(6 * scale)),
                (cx + int(3 * scale), cy),
                (cx - int(4 * scale), cy + int(6 * scale))]
@@ -74,7 +68,7 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
                      unlocked_hp, unlocked_speed, unlocked_bullets, unlocked_firerate,
                      hp_step, speed_step, bullet_step, firerate_step, focused_btn):
     """
-    Renders the AAA Sci-Fi Cyberpunk Main Menu with responsive neon glow and layout isolation.
+    Renders the AAA Sci-Fi Cyberpunk Main Menu with dynamic blinking neon light effects.
     Returns: (next_state, focused_btn, running, next_click_cooldown, m_c, should_logout)
     """
     global _hangar_particles
@@ -95,63 +89,59 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
         return 0, focused_btn, False, 12, False, False
 
     # =========================================================================
-    # 1. TOP COMMAND DECK (HEADER BAR - PERFECTLY NON-OVERLAPPING)
+    # 1. TOP COMMAND DECK (HEADER BAR - ZERO OVERLAPS)
     # =========================================================================
-    # --- A. Left: Pilot Identity Card ---
+    # --- A. Left: Pilot Identity Card (x: 16 -> 180) ---
     profile_name = cloud_sync.current_username or "Guest Pilot"
-    if len(profile_name) > 12:
-        profile_name = profile_name[:10] + ".."
+    if len(profile_name) > 11:
+        profile_name = profile_name[:9] + ".."
 
-    prof_card = pygame.Rect(20, 12, 175, 36)
+    prof_card = pygame.Rect(16, 12, 164, 40)
     prof_bg = pygame.Surface((prof_card.width, prof_card.height), pygame.SRCALPHA)
     pygame.draw.rect(prof_bg, (12, 16, 30, 220), prof_bg.get_rect(), border_radius=8)
     pygame.draw.rect(prof_bg, (*NEON_CYAN[:3], 90), prof_bg.get_rect(), width=1, border_radius=8)
     screen.blit(prof_bg, prof_card.topleft)
 
-    dot_glow = int(180 + 75 * math.sin(ui_pulse_t * 3.5))
+    # Blinking status beacon
+    dot_glow = int(160 + 95 * math.sin(ui_pulse_t * 5.0))
     pygame.draw.circle(screen, (*NEON_GREEN[:3], dot_glow), (prof_card.x + 14, prof_card.centery - 4), 4)
     pygame.draw.circle(screen, WHITE, (prof_card.x + 14, prof_card.centery - 4), 2)
     draw_text(profile_name, FONT_MENU_SUB, WHITE, prof_card.x + 26, prof_card.centery - 6, center=False)
-    draw_text("PILOT // ONLINE", FONT_MENU_TELEMETRY, (100, 140, 180), prof_card.x + 26, prof_card.centery + 6, center=False)
+    draw_text("PILOT // ONLINE", FONT_MENU_TELEMETRY, (100, 150, 200), prof_card.x + 26, prof_card.centery + 6, center=False)
 
-    # --- B. Center: Logo & Subtitle ---
-    title_glow_a = int(60 + 30 * math.sin(ui_pulse_t * 2.0))
+    # --- B. Center: Logo & Subtitle (x: 250 -> 550) ---
+    title_glow_a = int(60 + 35 * math.sin(ui_pulse_t * 2.5))
     for goff, ga in [(2, title_glow_a // 2), (1, title_glow_a)]:
         ts = FONT_MENU_TITLE.render("CRAZYY SIMULATION", True, NEON_CYAN)
         ts.set_alpha(ga)
-        screen.blit(ts, ts.get_rect(center=(WIDTH // 2 + goff, 24)))
-    draw_text_shadow("CRAZYY SIMULATION", FONT_MENU_TITLE, WHITE, WIDTH // 2, 24,
+        screen.blit(ts, ts.get_rect(center=(WIDTH // 2 + goff, 22)))
+    draw_text_shadow("CRAZYY SIMULATION", FONT_MENU_TITLE, WHITE, WIDTH // 2, 22,
                      shadow_color=(0, 40, 80), offset=2)
 
     sub_text = "//  COSMIC CIVIL WAR  //"
-    draw_text(sub_text, FONT_MENU_SUB, NEON_GOLD, WIDTH // 2, 48, center=True)
-    pygame.draw.line(screen, (*NEON_CYAN, 70), (WIDTH // 2 - 160, 48), (WIDTH // 2 - 80, 48), 1)
-    pygame.draw.line(screen, (*NEON_CYAN, 70), (WIDTH // 2 + 80, 48), (WIDTH // 2 + 160, 48), 1)
+    draw_text(sub_text, FONT_MENU_SUB, NEON_GOLD, WIDTH // 2, 46, center=True)
+    pygame.draw.line(screen, (*NEON_CYAN, 70), (WIDTH // 2 - 150, 46), (WIDTH // 2 - 75, 46), 1)
+    pygame.draw.line(screen, (*NEON_CYAN, 70), (WIDTH // 2 + 75, 46), (WIDTH // 2 + 150, 46), 1)
 
-    # --- C. Right: Credits & Cloud Sync Pill ---
-    coin_pill = pygame.Rect(580, 12, 125, 36)
-    coin_bg = pygame.Surface((coin_pill.width, coin_pill.height), pygame.SRCALPHA)
-    pygame.draw.rect(coin_bg, (12, 16, 30, 220), coin_bg.get_rect(), border_radius=8)
-    pygame.draw.rect(coin_bg, (*NEON_GOLD[:3], 100), coin_bg.get_rect(), width=1, border_radius=8)
-    screen.blit(coin_bg, coin_pill.topleft)
-    screen.blit(coin_icon, (coin_pill.x + 6, coin_pill.y + 6))
-    draw_text(f"{total_coins:,}", FONT_MENU_SUB, NEON_GOLD, coin_pill.x + 34, coin_pill.centery - 6, center=False)
-    draw_text("CREDITS", FONT_MENU_TELEMETRY, (160, 140, 90), coin_pill.x + 34, coin_pill.centery + 6, center=False)
+    # --- C. Right: Unified Credit & Sync Terminal (x: 550 -> 705) ---
+    # Leaves x: 710 -> 800 completely free for FPS: 60 overlay!
+    credit_card = pygame.Rect(550, 12, 155, 40)
+    cr_bg = pygame.Surface((credit_card.width, credit_card.height), pygame.SRCALPHA)
+    pygame.draw.rect(cr_bg, (12, 16, 30, 220), cr_bg.get_rect(), border_radius=8)
+    pygame.draw.rect(cr_bg, (*NEON_GOLD[:3], 90), cr_bg.get_rect(), width=1, border_radius=8)
+    screen.blit(cr_bg, credit_card.topleft)
+    
+    # Coin icon & text
+    screen.blit(coin_icon, (credit_card.x + 8, credit_card.y + 11))
+    draw_text(f"{total_coins:,} CC", FONT_MENU_SUB, NEON_GOLD, credit_card.x + 36, credit_card.centery - 6, center=False)
+    draw_text("CLOUD SYNCED", FONT_MENU_TELEMETRY, NEON_GREEN, credit_card.x + 36, credit_card.centery + 6, center=False)
 
-    cloud_pill = pygame.Rect(715, 12, 65, 36)
-    cloud_bg = pygame.Surface((cloud_pill.width, cloud_pill.height), pygame.SRCALPHA)
-    pygame.draw.rect(cloud_bg, (12, 16, 30, 220), cloud_bg.get_rect(), border_radius=8)
-    pygame.draw.rect(cloud_bg, (*NEON_CYAN[:3], 80), cloud_bg.get_rect(), width=1, border_radius=8)
-    screen.blit(cloud_bg, cloud_pill.topleft)
-    draw_text("CLOUD", FONT_MENU_TELEMETRY, NEON_CYAN, cloud_pill.centerx, cloud_pill.centery - 6, center=True)
-    draw_text("SYNCED", FONT_MENU_TELEMETRY, NEON_GREEN, cloud_pill.centerx, cloud_pill.centery + 6, center=True)
-
-    pygame.draw.line(screen, (30, 45, 75), (20, 62), (WIDTH - 20, 62), 1)
+    pygame.draw.line(screen, (30, 45, 75), (16, 58), (WIDTH - 16, 58), 1)
 
     # =========================================================================
-    # 2. LEFT NAVIGATION CONSOLE (CYBER CARDS WITH MULTI-LAYER NEON GLOW)
+    # 2. LEFT NAVIGATION CONSOLE (DYNAMIC BLINKING & GLOWING BUTTONS)
     # =========================================================================
-    card_y = 76
+    card_y = 72
     card_w = 340
     card_h = 68
     card_gap = 10
@@ -162,7 +152,7 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
     
     for idx, (title, sub, icon_t, accent_col, target) in enumerate(nav_items):
         cur_y = card_y + idx * (card_h + card_gap)
-        card_rect = pygame.Rect(20, cur_y, card_w, card_h)
+        card_rect = pygame.Rect(16, cur_y, card_w, card_h)
         
         is_hover = card_rect.collidepoint(mx, my)
         is_focused = (idx == focused_btn)
@@ -175,39 +165,56 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
         slide_ox = 6 if active else 0
         render_rect = pygame.Rect(card_rect.x + slide_ox, card_rect.y, card_rect.width - slide_ox, card_rect.height)
         
-        # --- Multi-Layer Outer Neon Glow ---
+        # --- A. BLINKING & PULSING NEON GLOW EFFECTS ---
         if active:
+            # High-intensity blinking strobe light effect
+            blink_intensity = int(140 + 115 * abs(math.sin(ui_pulse_t * 6.0)))
             _card_glow_surf.fill((0, 0, 0, 0))
             glow_pad = 8
-            # Outer soft glow bloom
-            glow_rect_inner = pygame.Rect(glow_pad, glow_pad, render_rect.width, render_rect.height)
-            glow_pulse = int(90 + 40 * math.sin(ui_pulse_t * 4.0))
-            pygame.draw.rect(_card_glow_surf, (*accent_col[:3], glow_pulse // 3),
-                             pygame.Rect(glow_pad - 4, glow_pad - 4, render_rect.width + 8, render_rect.height + 8),
-                             border_radius=14)
-            pygame.draw.rect(_card_glow_surf, (*accent_col[:3], glow_pulse),
-                             glow_rect_inner, width=2, border_radius=12)
+            
+            # Outer soft neon aura
+            pygame.draw.rect(_card_glow_surf, (*accent_col[:3], blink_intensity // 4),
+                             pygame.Rect(glow_pad - 6, glow_pad - 6, render_rect.width + 12, render_rect.height + 12),
+                             border_radius=16)
+            # Focused inner neon glow ring
+            pygame.draw.rect(_card_glow_surf, (*accent_col[:3], blink_intensity),
+                             pygame.Rect(glow_pad, glow_pad, render_rect.width, render_rect.height),
+                             width=3, border_radius=10)
             screen.blit(_card_glow_surf, (render_rect.x - glow_pad, render_rect.y - glow_pad), special_flags=pygame.BLEND_ADD)
+        else:
+            # Idle gentle breathing neon border
+            idle_breath = int(50 + 35 * math.sin(ui_pulse_t * 2.5 + idx * 0.9))
             
         # Draw Glassmorphic Card Surface
         _menu_card_surf.fill((0, 0, 0, 0))
         bg_alpha = 245 if active else 190
         card_fill = (18, 26, 48, bg_alpha) if active else (10, 14, 26, bg_alpha)
-        border_col = (*accent_col[:3], 255 if active else 70)
+        
+        border_alpha = 255 if active else int(50 + 35 * math.sin(ui_pulse_t * 2.5 + idx * 0.9))
+        border_col = (*accent_col[:3], border_alpha)
         
         pygame.draw.rect(_menu_card_surf, card_fill, (0, 0, render_rect.width, render_rect.height), border_radius=10)
         pygame.draw.rect(_menu_card_surf, border_col, (0, 0, render_rect.width, render_rect.height), width=2 if active else 1, border_radius=10)
         
-        # Left neon indicator stripe
-        stripe_h = render_rect.height if active else 28
-        stripe_y = (render_rect.height - stripe_h) // 2
-        pygame.draw.rect(_menu_card_surf, accent_col, (0, stripe_y, 4 if active else 3, stripe_h), border_radius=2)
-        
-        # Active hover laser scanline
+        # Left neon indicator stripe with pulsing height
         if active:
-            scan_y = int((ui_pulse_t * 60) % card_h)
-            pygame.draw.line(_menu_card_surf, (*accent_col[:3], 80), (4, scan_y), (render_rect.width - 4, scan_y), 1)
+            stripe_h = render_rect.height
+            stripe_col = WHITE
+        else:
+            stripe_h = int(24 + 10 * math.sin(ui_pulse_t * 3.0 + idx))
+            stripe_col = accent_col
             
+        stripe_y = (render_rect.height - stripe_h) // 2
+        pygame.draw.rect(_menu_card_surf, stripe_col, (0, stripe_y, 4 if active else 3, stripe_h), border_radius=2)
+        
+        # Animated horizontal light glint sweep across active button
+        if active:
+            glint_x = int((ui_pulse_t * 180) % (render_rect.width + 80)) - 40
+            if -30 < glint_x < render_rect.width + 30:
+                glint_surf = pygame.Surface((30, render_rect.height), pygame.SRCALPHA)
+                glint_surf.fill((*accent_col[:3], 45))
+                _menu_card_surf.blit(glint_surf, (glint_x, 0), special_flags=pygame.BLEND_ADD)
+                
         screen.blit(_menu_card_surf, render_rect.topleft)
         
         # Vector Icon inside card
@@ -222,16 +229,18 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
         draw_text(title, FONT_MENU_CARD_MAIN, title_col, render_rect.x + 56, render_rect.centery - 11, center=False)
         draw_text(sub, FONT_MENU_CARD_DESC, desc_col, render_rect.x + 56, render_rect.centery + 10, center=False)
         
-        # Badges & Indicators
+        # Badges & Blinking Indicators
         if target == "locked":
             badge_r = pygame.Rect(render_rect.right - 96, render_rect.centery - 10, 88, 20)
             pygame.draw.rect(screen, (35, 15, 20), badge_r, border_radius=10)
             pygame.draw.rect(screen, (*RED[:3], 180), badge_r, width=1, border_radius=10)
             draw_text("COMING v2.0", FONT_TINY, RED, badge_r.centerx, badge_r.centery)
         elif active:
-            draw_vector_icon(screen, "chevron", render_rect.right - 18, render_rect.centery, accent_col, scale=1.2)
+            # Flashing right chevron
+            chev_col = WHITE if (int(ui_pulse_t * 8) % 2 == 0) else accent_col
+            draw_vector_icon(screen, "chevron", render_rect.right - 18, render_rect.centery, chev_col, scale=1.2)
             
-        # Click / Activation (Instantly responsive)
+        # Click / Activation
         activated = (m_c and is_hover) or (key_enter and is_focused)
         if activated and target != "locked":
             tap_snd.play()
@@ -244,7 +253,7 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
     # =========================================================================
     # 3. RIGHT SHIP HANGAR & LIVE TELEMETRY BAY
     # =========================================================================
-    hangar_rect = pygame.Rect(380, 76, 400, 452)
+    hangar_rect = pygame.Rect(375, 72, 408, 460)
     
     _hangar_surf.fill((0, 0, 0, 0))
     pygame.draw.rect(_hangar_surf, (8, 12, 24, 200), _hangar_surf.get_rect(), border_radius=12)
@@ -324,8 +333,8 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
     pygame.draw.circle(screen, WHITE, (ship_cx, ship_cy + float_y - 4), 4)
     pygame.draw.circle(screen, NEON_CYAN, (ship_cx, ship_cy + float_y - 4), 7, 1)
 
-    # Telemetry Stat Grid (Clean 2x2 cards with distinct label/value placement)
-    stat_box_y = hangar_rect.y + 270
+    # Telemetry Stat Grid (Clean 2x2 cards with non-overlapping bounds)
+    stat_box_y = hangar_rect.y + 278
     pygame.draw.line(screen, (30, 45, 75), (hangar_rect.x + 16, stat_box_y - 12), (hangar_rect.right - 16, stat_box_y - 12), 1)
     
     stats = [
@@ -336,9 +345,9 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
     ]
     
     for i, (label, val, sub_stat, col) in enumerate(stats):
-        bx = hangar_rect.x + 16 + (i % 2) * 186
+        bx = hangar_rect.x + 16 + (i % 2) * 190
         by = stat_box_y + (i // 2) * 52
-        s_rect = pygame.Rect(bx, by, 180, 44)
+        s_rect = pygame.Rect(bx, by, 184, 44)
         
         s_bg = pygame.Surface((s_rect.width, s_rect.height), pygame.SRCALPHA)
         pygame.draw.rect(s_bg, (14, 18, 34, 190), s_bg.get_rect(), border_radius=8)
@@ -347,7 +356,6 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
         
         draw_text(label, FONT_MENU_TELEMETRY, (120, 140, 170), s_rect.x + 8, s_rect.y + 7, center=False)
         draw_text(val, FONT_MENU_SUB, WHITE, s_rect.x + 8, s_rect.y + 24, center=False)
-        # Place sub_stat badge aligned cleanly to the right
         draw_badge(screen, sub_stat, FONT_TINY, s_rect.right - 34, s_rect.centery,
                    bg_color=(20, 24, 45), text_color=col, border_color=col)
 
@@ -360,7 +368,7 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
     # 4. BOTTOM ACTION DOCK
     # =========================================================================
     # --- A. Bottom Left: Quick Logout ---
-    btn_logout = pygame.Rect(20, 552, 130, 32)
+    btn_logout = pygame.Rect(16, 552, 130, 32)
     is_h_logout = btn_logout.collidepoint(mx, my)
     
     lo_bg = pygame.Surface((btn_logout.width, btn_logout.height), pygame.SRCALPHA)
@@ -379,7 +387,7 @@ def render_main_menu(screen, mx, my, m_c, key_escape, key_enter, key_up, key_dow
     draw_text("CRAZYY ENGINE  •  v1.0.0  •  CREATED BY @IAMBKRAM", FONT_MENU_TELEMETRY, (70, 95, 130), WIDTH // 2 + 10, 568)
 
     # --- C. Bottom Right: Bug Report ---
-    btn_report = pygame.Rect(WIDTH - 160, 552, 140, 32)
+    btn_report = pygame.Rect(WIDTH - 156, 552, 140, 32)
     is_h_report = btn_report.collidepoint(mx, my)
     
     rep_bg = pygame.Surface((btn_report.width, btn_report.height), pygame.SRCALPHA)
