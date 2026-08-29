@@ -28,6 +28,15 @@ except Exception:
     FONT_MONO    = FONT_HP
     FONT_MONO_SM = FONT_TINY
 
+try:
+    FONT_AUTH_TITLE = pygame.font.SysFont("Segoe UI", 20, bold=True)
+    FONT_AUTH_SUB   = pygame.font.SysFont("Segoe UI", 12)
+    FONT_AUTH_INPUT = pygame.font.SysFont("Segoe UI", 16, bold=True)
+except Exception:
+    FONT_AUTH_TITLE = FONT_SMALL
+    FONT_AUTH_SUB   = FONT_TINY
+    FONT_AUTH_INPUT = FONT_SMALL
+
 # Text Surface Cache (LRU) for performance
 _text_cache = {}
 _TEXT_CACHE_MAX = 512

@@ -977,24 +977,24 @@ while running:
     # AUTHENTICATION UI (STATES -3, -4, -4.1, -4.2, -5)
     # ==========================
     elif state == -3:
-        state = auth_ui.render_method_select(screen, mx, my, m_c, key_enter, tap_snd, menu_bg, ui_pulse_t, now)
+        state = auth_ui.render_method_select(screen, mx, my, m_c, key_enter, key_escape, tap_snd, menu_bg, ui_pulse_t, now)
         if state != -3:
             click_cooldown = 12
             m_c = False
     elif state == -4:
-        state = auth_ui.render_google_action(screen, mx, my, m_c, key_enter, tap_snd, menu_bg, ui_pulse_t, now)
+        state = auth_ui.render_google_action(screen, mx, my, m_c, key_enter, key_escape, tap_snd, menu_bg, ui_pulse_t, now)
         if state != -4:
             click_cooldown = 12
             m_c = False
     elif state == -4.1:
         auth_ui.handle_input(key_unicode, key_backspace, key_tab)
-        state = auth_ui.render_auth_form(screen, mx, my, m_c, key_enter, tap_snd, menu_bg, ui_pulse_t, now, is_signup=True)
+        state = auth_ui.render_auth_form(screen, mx, my, m_c, key_enter, key_escape, tap_snd, menu_bg, ui_pulse_t, now, is_signup=True)
     elif state == -4.2:
         auth_ui.handle_input(key_unicode, key_backspace, key_tab)
-        state = auth_ui.render_auth_form(screen, mx, my, m_c, key_enter, tap_snd, menu_bg, ui_pulse_t, now, is_signup=False)
+        state = auth_ui.render_auth_form(screen, mx, my, m_c, key_enter, key_escape, tap_snd, menu_bg, ui_pulse_t, now, is_signup=False)
     elif state == -5:
         auth_ui.handle_input(key_unicode, key_backspace, key_tab)
-        state = auth_ui.render_auth_form(screen, mx, my, m_c, key_enter, tap_snd, menu_bg, ui_pulse_t, now, is_signup=True, is_bind=True)
+        state = auth_ui.render_auth_form(screen, mx, my, m_c, key_enter, key_escape, tap_snd, menu_bg, ui_pulse_t, now, is_signup=True, is_bind=True)
         if state == 9: # Cancelled bind, back to settings
             click_cooldown = 12
             m_c = False
@@ -1514,8 +1514,8 @@ while running:
         mouse_dy = my - prev_my
         prev_mx, prev_my = mx, my
 
-        # Determine dynamic flight boundary (unrestricted during waves, restricted during boss encounter)
-        current_player_min_y = PLAYER_BOSS_MIN_Y if (boss_active or boss_arriving) else PLAYER_MIN_Y_NORMAL
+        # Determine dynamic flight boundary (unrestricted during waves, restricted during boss encounter except in Blackhole)
+        current_player_min_y = PLAYER_MIN_Y_NORMAL if is_blackhole else (PLAYER_BOSS_MIN_Y if (boss_active or boss_arriving) else PLAYER_MIN_Y_NORMAL)
 
         # --- SMART CONTROLS LOGIC ---
         if fire_cooldown > 0:
@@ -1654,8 +1654,8 @@ while running:
             vignette_alpha = 55 if visual_quality == 'medium' else 80
             draw_neon_vignette(screen, color=(0, 5, 15), alpha_edge=vignette_alpha, steps=4)
 
-        # Draw Player Flight Zone Defense Boundary Line (Only active when boss is arriving or in combat)
-        if boss_arriving or boss_active:
+        # Draw Player Flight Zone Defense Boundary Line (Only active in Galaxy & Nebula sectors when boss is active)
+        if (boss_arriving or boss_active) and not is_blackhole:
             boundary_alpha = int(100 + 40 * math.sin(ui_pulse_t * 3.0))
             is_boss_fight = boss_active and boss_death_timer == 0
             barrier_color = NEON_CYAN if is_boss_fight else RED
@@ -2209,7 +2209,10 @@ while running:
                     if dy > 0: player_rect.top = boss_rect.bottom + 4
                     else: player_rect.bottom = boss_rect.top - 4
                 
-                player_rect.top = max(PLAYER_BOSS_MIN_Y, player_rect.top)
+                if not is_blackhole:
+                    player_rect.top = max(PLAYER_BOSS_MIN_Y, player_rect.top)
+                else:
+                    player_rect.top = max(PLAYER_MIN_Y_NORMAL, player_rect.top)
                 player_rect.bottom = min(PLAYER_MAX_Y, player_rect.bottom)
                 player_rect.left = max(PLAYER_MIN_X, player_rect.left)
                 player_rect.right = min(PLAYER_MAX_X, player_rect.right)
@@ -2598,8 +2601,13 @@ while running:
         draw_corner_brackets(screen, pygame.Rect(2, 2, WIDTH - 4, 64), NEON_CYAN, size=10, width=1)
 
         # ── Coin Display (left) ──
-        screen.blit(coin_icon, (14, 12))
-        draw_neon_text(screen, str(total_coins), FONT_HUD, NEON_GOLD, 70, 34, glow_radius=3)
+        coin_pill = pygame.Rect(12, 14, 120, 36)
+        coin_bg = pygame.Surface((coin_pill.width, coin_pill.height), pygame.SRCALPHA)
+        pygame.draw.rect(coin_bg, (15, 20, 35, 180), coin_bg.get_rect(), border_radius=10)
+        pygame.draw.rect(coin_bg, (*NEON_GOLD[:3], 120), coin_bg.get_rect(), width=1, border_radius=10)
+        screen.blit(coin_bg, coin_pill.topleft)
+        screen.blit(coin_icon, (18, 16))
+        draw_text(str(total_coins), FONT_UI, NEON_GOLD, 78, 32, center=True)
 
         # ── Environment + Level Badge (center) ──
         env_names_hud = {1: "GALAXY", 2: "NEBULA", 3: "BLACKHOLE"}
@@ -2608,7 +2616,7 @@ while running:
 
         # Environment + Level text
         hud_label = f"{env_label}  •  MISSION {current_level}"
-        draw_neon_text(screen, hud_label, FONT_UI, env_accent_hud, WIDTH // 2 - 20, 34, glow_radius=2)
+        draw_neon_text(screen, hud_label, FONT_UI, env_accent_hud, WIDTH // 2, 32, glow_radius=2, center=True)
 
         # ── Pause Button ──
         draw_button(screen, "||", FONT_SMALL, WHITE, pause_btn_rect,
@@ -2618,7 +2626,7 @@ while running:
             touch_hud.draw_fire_button(screen, is_h_fire and mouse_pressed, FONT_TINY, pulse_t=ui_pulse_t)
 
         # ── Player Health Bar (right side) — chromatic ──
-        hp_bar_rect = pygame.Rect(WIDTH - 212, 18, 188, 20)
+        hp_bar_rect = pygame.Rect(WIDTH - 212, 18, 188, 22)
         hp_frac = max(0.0, player_health / max(1, unlocked_hp))
         draw_chromatic_bar(screen, hp_bar_rect, hp_frac,
                            label=f"HP {int(max(0, player_health))}/{unlocked_hp}",
@@ -2626,7 +2634,7 @@ while running:
 
         # ── Boss Health Bar ──
         if boss_active and boss_death_timer == 0:
-            boss_hp_bg = pygame.Rect(WIDTH // 2 - 175, 76, 350, 18)
+            boss_hp_bg = pygame.Rect(WIDTH // 2 - 160, 70, 320, 18)
             boss_frac = max(0.0, boss_hp / max(1, boss_max_hp))
 
             # Phase markers on boss bar
@@ -2641,9 +2649,10 @@ while running:
                                font=FONT_HP, border_radius=9, show_glow=True, pulse_t=ui_pulse_t,
                                color_full=NEON_PINK, color_mid=(200, 50, 180), color_low=NEON_SCARLET)
 
-            # Phase indicators
+            # Phase badge
             ph_str = f"PHASE {boss_ai_phase}/3"
-            draw_text(ph_str, FONT_TINY, NEON_PINK, WIDTH // 2 + 185, 85)
+            draw_badge(screen, ph_str, FONT_TINY, WIDTH // 2, 98,
+                       bg_color=(35, 15, 30), text_color=NEON_PINK, border_color=NEON_PINK)
 
         # Mobile hint
         if control_type == 'MOBILE':
@@ -2694,8 +2703,8 @@ while running:
         if boss_arriving:
             boss_warning_timer -= 1
             
-            # Smoothly glide player down to safety if they were high up on the map before the boundary solidifies
-            if player_rect.top < PLAYER_BOSS_MIN_Y:
+            # Smoothly glide player down to safety if they were high up on the map before the boundary solidifies (Galaxy/Nebula only)
+            if not is_blackhole and player_rect.top < PLAYER_BOSS_MIN_Y:
                 player_rect.y += min(4, PLAYER_BOSS_MIN_Y - player_rect.top)
 
             # 🚨 Dramatic Screen Blink / Alarm Strobe
@@ -2717,7 +2726,8 @@ while running:
                 boss_ai_phase = 1
                 boss_rect.centerx = WIDTH // 2
                 boss_rect.bottom = 0  # Enter from top of screen
-                player_rect.top = max(PLAYER_BOSS_MIN_Y, player_rect.top)
+                if not is_blackhole:
+                    player_rect.top = max(PLAYER_BOSS_MIN_Y, player_rect.top)
 
         if boss_defeated_timer > 0:
             boss_defeated_timer -= 1
