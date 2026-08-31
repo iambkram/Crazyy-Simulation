@@ -1737,7 +1737,6 @@ while running:
                         vfx_engine.emit_spaghettification_implosion(BH_X, BH_Y, enemy_type=e_type)
                         boss_expl_snd.play()
                         kill_count += 1
-                        score += coin_val * 10
                         # Fling earned coins outward from singularity
                         for _ in range(max(1, coin_val)):
                             c_ang = random.uniform(0, 2 * math.pi)
@@ -1757,7 +1756,6 @@ while running:
                             vfx_engine.emit_spaghettification_implosion(e['rect'].centerx, e['rect'].centery, enemy_type=e_type)
                             expl_snd.play()
                             kill_count += 1
-                            score += coin_val * 10
                             for _ in range(max(1, coin_val)):
                                 coins.append({
                                     'rect': pygame.Rect(e['rect'].centerx, e['rect'].centery, 20, 20),
