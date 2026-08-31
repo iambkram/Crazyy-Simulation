@@ -1737,15 +1737,9 @@ while running:
                         vfx_engine.emit_spaghettification_implosion(BH_X, BH_Y, enemy_type=e_type)
                         boss_expl_snd.play()
                         kill_count += 1
-                        # Fling earned coins outward from singularity
-                        for _ in range(max(1, coin_val)):
-                            c_ang = random.uniform(0, 2 * math.pi)
-                            c_spd = random.uniform(3.0, 6.5)
-                            coins.append({
-                                'rect': pygame.Rect(BH_X, BH_Y, 20, 20),
-                                'vx': math.cos(c_ang) * c_spd,
-                                'vy': math.sin(c_ang) * c_spd
-                            })
+                        update_coins(coin_val)
+                        if spawn_director:
+                            spawn_director.record_kill()
                         continue
                     # 2. Heavy Ship Gravitational Tidal Shear Damage
                     elif e_dist < 75 and e_type in ('heavy', 'berserker', 'commander'):
@@ -1756,12 +1750,9 @@ while running:
                             vfx_engine.emit_spaghettification_implosion(e['rect'].centerx, e['rect'].centery, enemy_type=e_type)
                             expl_snd.play()
                             kill_count += 1
-                            for _ in range(max(1, coin_val)):
-                                coins.append({
-                                    'rect': pygame.Rect(e['rect'].centerx, e['rect'].centery, 20, 20),
-                                    'vx': random.uniform(-2, 2),
-                                    'vy': random.uniform(1, 4)
-                                })
+                            update_coins(coin_val)
+                            if spawn_director:
+                                spawn_director.record_kill()
                             continue
 
                 # Enemy collision with player
