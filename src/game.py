@@ -1736,7 +1736,7 @@ while running:
                             e_list.remove(e)
                         vfx_engine.emit_spaghettification_implosion(BH_X, BH_Y, enemy_type=e_type)
                         boss_expl_snd.play()
-                        current_level_kills += 1
+                        kill_count += 1
                         score += coin_val * 10
                         # Fling earned coins outward from singularity
                         for _ in range(max(1, coin_val)):
@@ -1756,7 +1756,7 @@ while running:
                                 e_list.remove(e)
                             vfx_engine.emit_spaghettification_implosion(e['rect'].centerx, e['rect'].centery, enemy_type=e_type)
                             expl_snd.play()
-                            current_level_kills += 1
+                            kill_count += 1
                             score += coin_val * 10
                             for _ in range(max(1, coin_val)):
                                 coins.append({
@@ -2368,74 +2368,44 @@ while running:
         # Render bullet trails
         vfx_engine.update_and_draw_trails(screen)
 
-        # Drawing Ships (with Blackhole shrinkage if near center)
-        for f in fighters:
+        # Helper function for rendering ships with smooth continuous Black Hole shrinkage
+        def _render_scaled_ship(img, rect, base_w, base_h):
             if is_blackhole:
-                f_dist = math.hypot(BH_X - f['rect'].centerx, BH_Y - f['rect'].centery)
-                if f_dist < 150:
-                    f_scale = max(0.2, f_dist / 150.0)
-                    scaled_f = pygame.transform.scale(fighter_img, (max(8, int(50 * f_scale)), max(8, int(50 * f_scale))))
-                    screen.blit(scaled_f, scaled_f.get_rect(center=f['rect'].center))
-                else:
-                    screen.blit(fighter_img, f['rect'])
-                    if visual_quality == 'high':
-                        import random
-                        pygame.draw.circle(screen, (0, 255, 255), (f['rect'].centerx, f['rect'].top), random.randint(2, 4))
-            else:
-                screen.blit(fighter_img, f['rect'])
-                if visual_quality == 'high':
-                    import random
-                    pygame.draw.circle(screen, (0, 255, 255), (f['rect'].centerx, f['rect'].top), random.randint(2, 4))
+                dist = math.hypot(BH_X - rect.centerx, BH_Y - rect.centery)
+                if dist < 220:
+                    scale = max(0.08, min(1.0, dist / 220.0))
+                    sw = max(6, int(base_w * scale))
+                    sh = max(6, int(base_h * scale))
+                    s_surf = pygame.transform.scale(img, (sw, sh))
+                    screen.blit(s_surf, s_surf.get_rect(center=rect.center))
+                    return
+            screen.blit(img, rect)
+
+        # Drawing Ships (with continuous smooth Blackhole shrinkage)
+        for f in fighters:
+            _render_scaled_ship(fighter_img, f['rect'], 50, 50)
+            if visual_quality == 'high' and (not is_blackhole or math.hypot(BH_X - f['rect'].centerx, BH_Y - f['rect'].centery) >= 150):
+                pygame.draw.circle(screen, (0, 255, 255), (f['rect'].centerx, f['rect'].top), 3)
             if f['hp'] < f['max_hp']:
                 hp_w = int((f['rect'].width - 8) * (f['hp'] / f['max_hp']))
                 pygame.draw.rect(screen, (40, 40, 40), (f['rect'].left + 4, f['rect'].top - 8, f['rect'].width - 8, 4), border_radius=2)
                 pygame.draw.rect(screen, (255, 50, 50), (f['rect'].left + 4, f['rect'].top - 8, hp_w, 4), border_radius=2)
 
         for e in elites:
-            if is_blackhole:
-                e_dist = math.hypot(BH_X - e['rect'].centerx, BH_Y - e['rect'].centery)
-                if e_dist < 150:
-                    e_scale = max(0.2, e_dist / 150.0)
-                    scaled_e = pygame.transform.scale(elite_img, (max(10, int(60 * e_scale)), max(10, int(60 * e_scale))))
-                    screen.blit(scaled_e, scaled_e.get_rect(center=e['rect'].center))
-                else:
-                    screen.blit(elite_img, e['rect'])
-                    if visual_quality == 'high':
-                        import random
-                        pygame.draw.circle(screen, (255, 100, 255), (e['rect'].centerx - 10, e['rect'].top), random.randint(2, 5))
-                        pygame.draw.circle(screen, (255, 100, 255), (e['rect'].centerx + 10, e['rect'].top), random.randint(2, 5))
-            else:
-                screen.blit(elite_img, e['rect'])
-                if visual_quality == 'high':
-                    import random
-                    pygame.draw.circle(screen, (255, 100, 255), (e['rect'].centerx - 10, e['rect'].top), random.randint(2, 5))
-                    pygame.draw.circle(screen, (255, 100, 255), (e['rect'].centerx + 10, e['rect'].top), random.randint(2, 5))
-
+            _render_scaled_ship(elite_img, e['rect'], 60, 60)
+            if visual_quality == 'high' and (not is_blackhole or math.hypot(BH_X - e['rect'].centerx, BH_Y - e['rect'].centery) >= 150):
+                pygame.draw.circle(screen, (255, 100, 255), (e['rect'].centerx - 10, e['rect'].top), 3)
+                pygame.draw.circle(screen, (255, 100, 255), (e['rect'].centerx + 10, e['rect'].top), 3)
             if e['hp'] < e['max_hp']:
                 hp_w = int((e['rect'].width - 8) * (e['hp'] / e['max_hp']))
                 pygame.draw.rect(screen, (40, 40, 40), (e['rect'].left + 4, e['rect'].top - 8, e['rect'].width - 8, 4), border_radius=2)
                 pygame.draw.rect(screen, MAGENTA, (e['rect'].left + 4, e['rect'].top - 8, hp_w, 4), border_radius=2)
 
         for h in heavies:
-            if is_blackhole:
-                h_dist = math.hypot(BH_X - h['rect'].centerx, BH_Y - h['rect'].centery)
-                if h_dist < 150:
-                    h_scale = max(0.2, h_dist / 150.0)
-                    scaled_h = pygame.transform.scale(heavy_img, (max(12, int(80 * h_scale)), max(12, int(80 * h_scale))))
-                    screen.blit(scaled_h, scaled_h.get_rect(center=h['rect'].center))
-                else:
-                    screen.blit(heavy_img, h['rect'])
-                    if visual_quality == 'high':
-                        import random
-                        pygame.draw.circle(screen, (255, 50, 50), (h['rect'].centerx - 15, h['rect'].top), random.randint(3, 6))
-                        pygame.draw.circle(screen, (255, 50, 50), (h['rect'].centerx + 15, h['rect'].top), random.randint(3, 6))
-            else:
-                screen.blit(heavy_img, h['rect'])
-                if visual_quality == 'high':
-                    import random
-                    pygame.draw.circle(screen, (255, 50, 50), (h['rect'].centerx - 15, h['rect'].top), random.randint(3, 6))
-                    pygame.draw.circle(screen, (255, 50, 50), (h['rect'].centerx + 15, h['rect'].top), random.randint(3, 6))
-
+            _render_scaled_ship(heavy_img, h['rect'], 80, 80)
+            if visual_quality == 'high' and (not is_blackhole or math.hypot(BH_X - h['rect'].centerx, BH_Y - h['rect'].centery) >= 150):
+                pygame.draw.circle(screen, (255, 50, 50), (h['rect'].centerx - 15, h['rect'].top), 4)
+                pygame.draw.circle(screen, (255, 50, 50), (h['rect'].centerx + 15, h['rect'].top), 4)
             if h['hp'] < h['max_hp']:
                 hp_w = int((h['rect'].width - 10) * (h['hp'] / h['max_hp']))
                 pygame.draw.rect(screen, (40, 40, 40), (h['rect'].left + 5, h['rect'].top - 10, h['rect'].width - 10, 5), border_radius=2)
@@ -2447,12 +2417,10 @@ while running:
             if is_cloaked:
                 ghost_surf = fighter_img.copy()
                 ghost_surf.set_alpha(45)
-                screen.blit(ghost_surf, p['rect'])
-                if visual_quality == 'high':
-                    pygame.draw.rect(screen, (*NEON_VIOLET, 80), p['rect'].inflate(4, 4), width=1, border_radius=8)
+                _render_scaled_ship(ghost_surf, p['rect'], 50, 50)
             else:
-                screen.blit(fighter_img, p['rect'])
-                if visual_quality == 'high':
+                _render_scaled_ship(fighter_img, p['rect'], 50, 50)
+                if visual_quality == 'high' and (not is_blackhole or math.hypot(BH_X - p['rect'].centerx, BH_Y - p['rect'].centery) >= 150):
                     pygame.draw.circle(screen, NEON_VIOLET, (p['rect'].centerx, p['rect'].top), 4)
 
             if p['hp'] < p['max_hp']:
@@ -2462,9 +2430,8 @@ while running:
 
         # Drawing Berserkers (Hyper-aggressive scarlet tank)
         for bz in berserkers:
-            screen.blit(heavy_img, bz['rect'])
-            if visual_quality == 'high':
-                # Pulsing rage aura
+            _render_scaled_ship(heavy_img, bz['rect'], 80, 80)
+            if visual_quality == 'high' and (not is_blackhole or math.hypot(BH_X - bz['rect'].centerx, BH_Y - bz['rect'].centery) >= 150):
                 r_alpha = int(80 + 60 * math.sin(ui_pulse_t * 6))
                 r_surf = pygame.Surface((bz['rect'].width + 12, bz['rect'].height + 12), pygame.SRCALPHA)
                 pygame.draw.rect(r_surf, (*NEON_SCARLET, r_alpha), r_surf.get_rect(), border_radius=12, width=2)
@@ -2477,12 +2444,12 @@ while running:
 
         # Drawing Commanders (Golden squad leader with tactical beacon)
         for cmd in commanders:
-            screen.blit(heavy_img, cmd['rect'])
-            # Tactical command beacon aura
-            cmd_surf = pygame.Surface((cmd['rect'].width + 16, cmd['rect'].height + 16), pygame.SRCALPHA)
-            pygame.draw.rect(cmd_surf, (*NEON_GOLD, 90), cmd_surf.get_rect(), border_radius=14, width=2)
-            screen.blit(cmd_surf, (cmd['rect'].x - 8, cmd['rect'].y - 8))
-            draw_text("*", FONT_TINY, NEON_GOLD, cmd['rect'].centerx, cmd['rect'].top - 12)
+            _render_scaled_ship(heavy_img, cmd['rect'], 80, 80)
+            if not is_blackhole or math.hypot(BH_X - cmd['rect'].centerx, BH_Y - cmd['rect'].centery) >= 150:
+                cmd_surf = pygame.Surface((cmd['rect'].width + 16, cmd['rect'].height + 16), pygame.SRCALPHA)
+                pygame.draw.rect(cmd_surf, (*NEON_GOLD, 90), cmd_surf.get_rect(), border_radius=14, width=2)
+                screen.blit(cmd_surf, (cmd['rect'].x - 8, cmd['rect'].y - 8))
+                draw_text("*", FONT_TINY, NEON_GOLD, cmd['rect'].centerx, cmd['rect'].top - 12)
 
             if cmd['hp'] < cmd['max_hp']:
                 hp_w = int((cmd['rect'].width - 10) * (cmd['hp'] / cmd['max_hp']))
@@ -2528,11 +2495,11 @@ while running:
         if revive_protection_timer > 0:
             revive_protection_timer -= 1
 
-        # Draw Player (with spaghettification shrink in Blackhole)
-        if is_blackhole and p_dist < 160:
-            scale_ratio = max(0.15, min(1.0, p_dist / 160.0))
-            cur_w = max(12, int(70 * scale_ratio))
-            cur_h = max(12, int(70 * scale_ratio))
+        # Draw Player (with continuous smooth Blackhole shrinkage)
+        if is_blackhole and p_dist < 220:
+            p_scale = max(0.08, min(1.0, p_dist / 220.0))
+            cur_w = max(8, int(70 * p_scale))
+            cur_h = max(8, int(70 * p_scale))
             p_draw_surf = pygame.transform.scale(player_img, (cur_w, cur_h))
             p_draw_rect = p_draw_surf.get_rect(center=player_rect.center)
             if player_dmg_anim > 0 and (player_dmg_anim // 2) % 2 == 0:

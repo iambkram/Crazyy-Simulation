@@ -988,70 +988,28 @@ def draw_blackhole_overlay(screen, pulse_t, bh_cx=400, bh_cy=300):
     _bh_t += 0.016
     _init_bh_stars()
 
-    # --- 1. Relativistic Doppler Accretion Disk ---
-    # Multi-layered glowing accretion ellipses with Doppler shift
-    for i, (rx, ry, ang_tilt, base_a) in enumerate([
-        (135, 45, 0.25, 45),
-        (110, 36, 0.25, 75),
-        (85,  28, 0.25, 110),
-        (60,  20, 0.25, 150),
-    ]):
-        pulse = math.sin(pulse_t * 2.8 + i * 0.9) * 4
-        cur_rx, cur_ry = int(rx + pulse), int(ry + pulse * 0.4)
-        
-        # Accretion ellipse surface
-        disk_surf = pygame.Surface((cur_rx * 2 + 16, cur_ry * 2 + 16), pygame.SRCALPHA)
-        # Draw approaching side (bright blue-white / cyan) and receding side (deep orange/red)
-        for sub_a in range(0, 360, 10):
-            rad = math.radians(sub_a)
-            px = cur_rx + 8 + math.cos(rad) * cur_rx
-            py = cur_ry + 8 + math.sin(rad) * cur_ry
-            
-            # Doppler brightening factor (approaching on left side = brighter & bluer)
-            doppler = 0.5 + 0.5 * (-math.cos(rad))
-            if doppler > 0.6:
-                col = (int(180 + 75 * doppler), int(220 + 35 * doppler), 255)
-                a = min(255, int(base_a * (1.2 + doppler)))
-            else:
-                col = (255, int(100 * doppler), int(30 * doppler))
-                a = min(255, int(base_a * (0.7 + doppler)))
-                
-            pygame.draw.circle(disk_surf, (*col, a), (int(px), int(py)), max(1, int(3 * (doppler + 0.5))))
-            
-        screen.blit(disk_surf, (bh_cx - cur_rx - 8, bh_cy - cur_ry - 8), special_flags=pygame.BLEND_ADD)
-
-    # --- 2. Photon Sphere & Einstein Lensing Rings ---
+    # --- 1. Concentric Pulsing Gravity Rings ---
     for i, (ring_r, ring_col, ring_a) in enumerate([
-        (52,  (255, 60, 100), 140),   # Inner photon sphere
-        (72,  (220, 30, 80),  85),    # Mid gravitational shear ring
-        (98,  (140, 10, 50),  45),    # Outer Einstein ring
+        (55,  (255, 40, 80),  130),   # Inner red hot ring
+        (75,  (200, 20, 60),  75),    # Mid gravitational shear ring
+        (100, (120, 0, 40),   45),    # Outer Einstein lensing ring
     ]):
-        pulse_offset = math.sin(pulse_t * 3.0 + i * 1.2) * 5
+        pulse_offset = math.sin(pulse_t * 2.5 + i * 1.1) * 6
         r = int(ring_r + pulse_offset)
         rsurf = pygame.Surface((r * 2 + 16, r * 2 + 16), pygame.SRCALPHA)
-        a = int(ring_a + 35 * math.sin(pulse_t * 3.5 + i))
+        a = int(ring_a + 30 * math.sin(pulse_t * 3.0 + i))
         pygame.draw.circle(rsurf, (*ring_col, a), (r + 8, r + 8), r, 2)
         screen.blit(rsurf, (bh_cx - r - 8, bh_cy - r - 8))
 
-    # --- 3. Periodic Gravitational Wave Ripple (Every ~12s) ---
-    gw_phase = (_bh_t * 0.4) % 4.0
-    if gw_phase < 2.5:
-        gw_r = int(40 + gw_phase * 120)
-        gw_alpha = int(max(0, 120 * (1.0 - gw_phase / 2.5)))
-        gw_surf = pygame.Surface((gw_r * 2 + 8, gw_r * 2 + 8), pygame.SRCALPHA)
-        pygame.draw.circle(gw_surf, (160, 40, 255, gw_alpha), (gw_r + 4, gw_r + 4), gw_r, 2)
-        screen.blit(gw_surf, (bh_cx - gw_r - 4, bh_cy - gw_r - 4), special_flags=pygame.BLEND_ADD)
-
-    # --- 4. Singularity Core Glow & Pure Black Void ---
-    core_r = int(28 + 6 * math.sin(pulse_t * 4))
-    for cr, ca in [(core_r + 22, 20), (core_r + 12, 45), (core_r, 95), (core_r - 8, 220)]:
+    # --- 2. Singularity Core Glow & Pure Black Void ---
+    core_r = int(30 + 8 * math.sin(pulse_t * 4))
+    for cr, ca in [(core_r + 20, 18), (core_r + 10, 40), (core_r, 85), (core_r - 10, 210)]:
         if cr > 0:
             csurf = pygame.Surface((cr * 2 + 4, cr * 2 + 4), pygame.SRCALPHA)
-            pygame.draw.circle(csurf, (200, 15, 60, ca), (cr + 2, cr + 2), cr)
+            pygame.draw.circle(csurf, (180, 10, 50, ca), (cr + 2, cr + 2), cr)
             screen.blit(csurf, (bh_cx - cr - 2, bh_cy - cr - 2))
-            
     # Pure event horizon void
-    pygame.draw.circle(screen, (0, 0, 0), (bh_cx, bh_cy), max(16, int(core_r - 6)))
+    pygame.draw.circle(screen, (0, 0, 0), (bh_cx, bh_cy), int(core_r - 8))
 
     # --- 5. Stars Spiraling Inward with Relativistic Lensing ---
     for s in _bh_star_pull:
