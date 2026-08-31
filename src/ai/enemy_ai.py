@@ -631,15 +631,37 @@ def run_enemy_ai(e, bullets, player_rect, level, env_speed_mult, ai_aggression, 
     elif e_type == 'commander':
         new_bullets = _ai_commander(e, bullets, player_rect, level, env_speed_mult, ai_aggression)
 
-    # Blackhole gravity
+    # Blackhole gravitational pull & orbital physics
     if is_blackhole:
         edx = BH_X - e['rect'].centerx
         edy = BH_Y - e['rect'].centery
         edist = math.hypot(edx, edy)
         if edist > 0:
-            e_pull = max(0.9, min(4.5, 600.0 / (edist + 70.0)))
-            e['rect'].x += int((edx / edist) * e_pull)
-            e['rect'].y += int((edy / edist) * e_pull)
+            # Mass & engine resistance per ship class
+            mass_mult = {
+                'fighter': 1.0,    # Lightest: sucked directly into singularity
+                'phantom': 0.75,   # Agile: high orbital drift
+                'elite': 0.65,     # Medium: orbital slingshot
+                'heavy': 0.40,     # Heavy: strong reverse thrusters
+                'berserker': 0.35, # Heavy: brute-force forward charge
+                'commander': 0.30, # Capital: heavy gravitational stabilization
+            }.get(e_type, 0.8)
+
+            e_pull = max(0.8, min(4.8, 650.0 / (edist + 60.0))) * mass_mult
+            
+            # Direct radial pull toward singularity
+            pull_vx = (edx / edist) * e_pull
+            pull_vy = (edy / edist) * e_pull
+
+            # Medium and heavy craft apply orbital tangential velocity when near accretion disk
+            if e_type in ('elite', 'phantom', 'heavy', 'berserker', 'commander') and edist < 160:
+                tan_dir = 1 if e['rect'].centerx < BH_X else -1
+                tan_spd = min(2.5, 200.0 / (edist + 40.0)) * (1.0 - mass_mult * 0.5)
+                pull_vx += (-edy / edist) * tan_spd * tan_dir
+                pull_vy += (edx / edist) * tan_spd * tan_dir
+
+            e['rect'].x += int(pull_vx)
+            e['rect'].y += int(pull_vy)
 
     e['rect'].x = max(0, min(WIDTH - e['rect'].width, e['rect'].x))
     return new_bullets

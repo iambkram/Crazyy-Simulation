@@ -327,6 +327,43 @@ class VisualEffectsEngine:
             'col': random.choice([NEON_ORANGE, NEON_CYAN, WHITE])
         })
 
+    def emit_spaghettification_implosion(self, cx, cy, enemy_type='fighter', col=None):
+        """
+        Relativistic vortex implosion when a ship crosses the black hole event horizon:
+        - Inward collapsing spiral particle vortex (spaghettified filaments)
+        - Singularity flash (violet / cyan / magenta)
+        - Gravitational ripple wave
+        """
+        if col is None:
+            col = (255, 60, 100) if enemy_type == 'fighter' else (200, 50, 255)
+            
+        # Inward-spiral spaghettified filaments
+        num_filaments = 26 if self.visual_quality == 'high' else 14
+        for i in range(num_filaments):
+            ang = random.uniform(0, 2 * math.pi)
+            dist = random.uniform(20, 60)
+            spd = random.uniform(3.5, 8.0)
+            p_col = random.choice([col, (255, 255, 255), (180, 20, 255), (0, 255, 255)])
+            self.explosion_particles.append({
+                'x': cx + math.cos(ang) * dist,
+                'y': cy + math.sin(ang) * dist,
+                'vx': -math.cos(ang + 0.6) * spd,
+                'vy': -math.sin(ang + 0.6) * spd,
+                'life': 14, 'max_life': 14,
+                'col': p_col,
+                'size': random.uniform(2.5, 5.5),
+                'stage': 1, 'decay': 0.85
+            })
+
+        # Relativistic implosion ring (negative expansion / collapsing ripple)
+        self.impact_ripples.append({
+            'x': cx, 'y': cy,
+            'r': 6.0, 'max_r': 42.0,
+            'spd': 3.2,
+            'alpha': 240.0,
+            'col': (180, 30, 255)
+        })
+
     def update_and_draw_explosions(self, screen):
         """Update and render explosion particles."""
         for p in self.explosion_particles[:]:
@@ -937,111 +974,152 @@ def _init_bh_stars():
                 'born_dist': dist,
             })
 
-def draw_blackhole_overlay(screen, pulse_t, bh_cx=400, bh_cy=200):
+def draw_blackhole_overlay(screen, pulse_t, bh_cx=400, bh_cy=300):
     """
-    Immersive Blackhole Horizon overlay:
-    - Pulsing gravity ring with chromatic distortion
-    - Stars spiraling inward and vanishing at the event horizon
-    - Glowing debris trails pulled toward the singularity
-    - Crimson edge vignette
-    - Subtle screen-edge chromatic aberration color strips
+    Immersive Relativistic Black Hole Horizon Overlay:
+    - Relativistic Doppler-shifted Accretion Disk (hot luminous blue-white approaching side, deep burning crimson-amber receding side)
+    - Einstein photon sphere & gravitational lensing distortion rings
+    - Periodic expanding gravitational wave ripple
+    - Accretion matter vortex & star suction filaments
+    - Subtle edge chromatic aberration & deep space crimson vignette
     """
     global _bh_debris, _bh_star_pull, _bh_t
     W, H = screen.get_size()
     _bh_t += 0.016
     _init_bh_stars()
 
-    # --- Gravity ring layers (pulsing concentric rings) ---
-    for i, (ring_r, ring_col, ring_a) in enumerate([
-        (55,  (255, 40, 80),  120),   # Inner red hot ring
-        (75,  (200, 20, 60),  70),    # Mid ring
-        (100, (120, 0, 40),   40),    # Outer dim ring
+    # --- 1. Relativistic Doppler Accretion Disk ---
+    # Multi-layered glowing accretion ellipses with Doppler shift
+    for i, (rx, ry, ang_tilt, base_a) in enumerate([
+        (135, 45, 0.25, 45),
+        (110, 36, 0.25, 75),
+        (85,  28, 0.25, 110),
+        (60,  20, 0.25, 150),
     ]):
-        pulse_offset = math.sin(pulse_t * 2.5 + i * 1.1) * 6
-        r = int(ring_r + pulse_offset)
-        rsurf = pygame.Surface((r * 2 + 12, r * 2 + 12), pygame.SRCALPHA)
-        a = int(ring_a + 30 * math.sin(pulse_t * 3 + i))
-        pygame.draw.circle(rsurf, (*ring_col, a), (r + 6, r + 6), r, 3)
-        screen.blit(rsurf, (bh_cx - r - 6, bh_cy - r - 6))
+        pulse = math.sin(pulse_t * 2.8 + i * 0.9) * 4
+        cur_rx, cur_ry = int(rx + pulse), int(ry + pulse * 0.4)
+        
+        # Accretion ellipse surface
+        disk_surf = pygame.Surface((cur_rx * 2 + 16, cur_ry * 2 + 16), pygame.SRCALPHA)
+        # Draw approaching side (bright blue-white / cyan) and receding side (deep orange/red)
+        for sub_a in range(0, 360, 10):
+            rad = math.radians(sub_a)
+            px = cur_rx + 8 + math.cos(rad) * cur_rx
+            py = cur_ry + 8 + math.sin(rad) * cur_ry
+            
+            # Doppler brightening factor (approaching on left side = brighter & bluer)
+            doppler = 0.5 + 0.5 * (-math.cos(rad))
+            if doppler > 0.6:
+                col = (int(180 + 75 * doppler), int(220 + 35 * doppler), 255)
+                a = min(255, int(base_a * (1.2 + doppler)))
+            else:
+                col = (255, int(100 * doppler), int(30 * doppler))
+                a = min(255, int(base_a * (0.7 + doppler)))
+                
+            pygame.draw.circle(disk_surf, (*col, a), (int(px), int(py)), max(1, int(3 * (doppler + 0.5))))
+            
+        screen.blit(disk_surf, (bh_cx - cur_rx - 8, bh_cy - cur_ry - 8), special_flags=pygame.BLEND_ADD)
 
-    # Singularity core glow
-    core_r = int(30 + 8 * math.sin(pulse_t * 4))
-    for cr, ca in [(core_r + 20, 15), (core_r + 10, 35), (core_r, 80), (core_r - 10, 200)]:
+    # --- 2. Photon Sphere & Einstein Lensing Rings ---
+    for i, (ring_r, ring_col, ring_a) in enumerate([
+        (52,  (255, 60, 100), 140),   # Inner photon sphere
+        (72,  (220, 30, 80),  85),    # Mid gravitational shear ring
+        (98,  (140, 10, 50),  45),    # Outer Einstein ring
+    ]):
+        pulse_offset = math.sin(pulse_t * 3.0 + i * 1.2) * 5
+        r = int(ring_r + pulse_offset)
+        rsurf = pygame.Surface((r * 2 + 16, r * 2 + 16), pygame.SRCALPHA)
+        a = int(ring_a + 35 * math.sin(pulse_t * 3.5 + i))
+        pygame.draw.circle(rsurf, (*ring_col, a), (r + 8, r + 8), r, 2)
+        screen.blit(rsurf, (bh_cx - r - 8, bh_cy - r - 8))
+
+    # --- 3. Periodic Gravitational Wave Ripple (Every ~12s) ---
+    gw_phase = (_bh_t * 0.4) % 4.0
+    if gw_phase < 2.5:
+        gw_r = int(40 + gw_phase * 120)
+        gw_alpha = int(max(0, 120 * (1.0 - gw_phase / 2.5)))
+        gw_surf = pygame.Surface((gw_r * 2 + 8, gw_r * 2 + 8), pygame.SRCALPHA)
+        pygame.draw.circle(gw_surf, (160, 40, 255, gw_alpha), (gw_r + 4, gw_r + 4), gw_r, 2)
+        screen.blit(gw_surf, (bh_cx - gw_r - 4, bh_cy - gw_r - 4), special_flags=pygame.BLEND_ADD)
+
+    # --- 4. Singularity Core Glow & Pure Black Void ---
+    core_r = int(28 + 6 * math.sin(pulse_t * 4))
+    for cr, ca in [(core_r + 22, 20), (core_r + 12, 45), (core_r, 95), (core_r - 8, 220)]:
         if cr > 0:
             csurf = pygame.Surface((cr * 2 + 4, cr * 2 + 4), pygame.SRCALPHA)
-            pygame.draw.circle(csurf, (180, 10, 50, ca), (cr + 2, cr + 2), cr)
+            pygame.draw.circle(csurf, (200, 15, 60, ca), (cr + 2, cr + 2), cr)
             screen.blit(csurf, (bh_cx - cr - 2, bh_cy - cr - 2))
-    # Black void center
-    pygame.draw.circle(screen, (0, 0, 0), (bh_cx, bh_cy), int(core_r - 8))
+            
+    # Pure event horizon void
+    pygame.draw.circle(screen, (0, 0, 0), (bh_cx, bh_cy), max(16, int(core_r - 6)))
 
-    # --- Stars spiraling inward ---
+    # --- 5. Stars Spiraling Inward with Relativistic Lensing ---
     for s in _bh_star_pull:
-        # Tighten orbit & pull inward
-        s['angle'] += s['spd'] * (1.0 + (s['born_dist'] - s['dist']) / s['born_dist'] * 3)
-        s['dist'] = max(0, s['dist'] - s['spd'] * 1.8)
-        if s['dist'] < 15:  # Consumed — reset
+        # Tighten orbit & pull inward along spiral geodesics
+        s['angle'] += s['spd'] * (1.0 + (s['born_dist'] - s['dist']) / max(1.0, s['born_dist']) * 3.5)
+        s['dist'] = max(0, s['dist'] - s['spd'] * 2.0)
+        if s['dist'] < 16:  # Consumed by singularity — respawn at outer boundary
             s['angle'] = random.uniform(0, 2 * math.pi)
-            s['dist'] = random.uniform(260, 420)
+            s['dist'] = random.uniform(280, 440)
             s['born_dist'] = s['dist']
             s['brightness'] = random.randint(80, 240)
         sx = bh_cx + math.cos(s['angle']) * s['dist']
         sy = bh_cy + math.sin(s['angle']) * s['dist']
-        frac = min(1.0, s['dist'] / s['born_dist'])
+        frac = min(1.0, s['dist'] / max(1.0, s['born_dist']))
         a = int(s['brightness'] * frac)
         col = (min(255, a // 2 + 80), min(255, int(a * 0.7)), min(255, a))
         r = max(1, s['r'] if frac > 0.3 else 1)
         if 0 <= int(sx) < W and 0 <= int(sy) < H:
             pygame.draw.circle(screen, col, (int(sx), int(sy)), r)
 
-    # --- Glowing debris trail particles ---
-    if len(_bh_debris) < 25 and random.random() < 0.4:
+    # --- 6. Accretion Debris & Plasma Stream Particles ---
+    if len(_bh_debris) < 30 and random.random() < 0.5:
         angle = random.uniform(0, 2 * math.pi)
-        dist = random.uniform(180, 360)
-        col = random.choice([(200, 80, 30), (255, 120, 40), (180, 50, 80), (255, 60, 90)])
+        dist = random.uniform(160, 340)
+        col = random.choice([(255, 60, 40), (255, 140, 50), (200, 40, 100), (0, 220, 255), (255, 255, 255)])
         _bh_debris.append({
             'x': bh_cx + math.cos(angle) * dist,
             'y': bh_cy + math.sin(angle) * dist,
             'angle': angle, 'dist': dist,
-            'spd': random.uniform(0.012, 0.03),
-            'life': random.randint(80, 200),
-            'max_life': 200,
-            'col': col, 'size': random.uniform(1.5, 3.5),
+            'spd': random.uniform(0.015, 0.038),
+            'life': random.randint(80, 220),
+            'max_life': 220,
+            'col': col, 'size': random.uniform(1.8, 3.8),
         })
 
     for d in _bh_debris[:]:
         d['angle'] += d['spd']
-        d['dist'] = max(0, d['dist'] - d['spd'] * 3.5)
+        d['dist'] = max(0, d['dist'] - d['spd'] * 4.2)
         d['x'] = bh_cx + math.cos(d['angle']) * d['dist']
         d['y'] = bh_cy + math.sin(d['angle']) * d['dist']
         d['life'] -= 1
-        if d['life'] <= 0 or d['dist'] < 20:
+        if d['life'] <= 0 or d['dist'] < 18:
             _bh_debris.remove(d)
             continue
         frac = d['life'] / d['max_life']
-        a = int(200 * frac)
+        a = int(220 * frac)
         sz = max(1, int(d['size'] * frac))
         dsurf = pygame.Surface((sz * 2 + 4, sz * 2 + 4), pygame.SRCALPHA)
         pygame.draw.circle(dsurf, (*d['col'], a), (sz + 2, sz + 2), sz)
-        screen.blit(dsurf, (int(d['x']) - sz - 2, int(d['y']) - sz - 2))
+        screen.blit(dsurf, (int(d['x']) - sz - 2, int(d['y']) - sz - 2), special_flags=pygame.BLEND_ADD)
 
-    # --- Chromatic aberration edge strips ---
+    # --- 7. Chromatic Aberration Edge Strips ---
     edge_a = int(18 + 12 * math.sin(pulse_t * 2.2))
     edge_w = 30
-    # Left edge: red tint
     esurf_l = pygame.Surface((edge_w, H), pygame.SRCALPHA)
     for ex in range(edge_w):
         a = int(edge_a * (1 - ex / edge_w))
         pygame.draw.line(esurf_l, (180, 0, 0, a), (ex, 0), (ex, H))
     screen.blit(esurf_l, (0, 0))
-    # Right edge: blue tint
+    
     esurf_r = pygame.Surface((edge_w, H), pygame.SRCALPHA)
     for ex in range(edge_w):
         a = int(edge_a * (1 - ex / edge_w))
         pygame.draw.line(esurf_r, (0, 0, 180, a), (ex, 0), (ex, H))
     screen.blit(esurf_r, (W - edge_w, 0))
 
-    # --- Crimson vignette ---
-    pulse_a = int(40 + 20 * math.sin(pulse_t * 2.0))
+    # --- 8. Deep Space Crimson Vignette ---
+    pulse_a = int(45 + 20 * math.sin(pulse_t * 2.0))
     draw_neon_vignette(screen, color=(120, 0, 20), alpha_edge=pulse_a)
 
 

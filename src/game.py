@@ -1727,6 +1727,45 @@ while running:
                 # Emit thrusters
                 vfx_engine.emit_enemy_thruster(e['rect'].centerx, e['rect'].top, e_type, e['rect'].width)
 
+                # Black Hole Event Horizon Singularity Absorption & Tidal Crush
+                if is_blackhole and e in e_list:
+                    e_dist = math.hypot(BH_X - e['rect'].centerx, BH_Y - e['rect'].centery)
+                    # 1. Event Horizon Singularity Implosion (Crushes red fighters & ships crossing horizon)
+                    if e_dist < 26:
+                        if e in e_list:
+                            e_list.remove(e)
+                        vfx_engine.emit_spaghettification_implosion(BH_X, BH_Y, enemy_type=e_type)
+                        boss_expl_snd.play()
+                        current_level_kills += 1
+                        score += coin_val * 10
+                        # Fling earned coins outward from singularity
+                        for _ in range(max(1, coin_val)):
+                            c_ang = random.uniform(0, 2 * math.pi)
+                            c_spd = random.uniform(3.0, 6.5)
+                            coins.append({
+                                'rect': pygame.Rect(BH_X, BH_Y, 20, 20),
+                                'vx': math.cos(c_ang) * c_spd,
+                                'vy': math.sin(c_ang) * c_spd
+                            })
+                        continue
+                    # 2. Heavy Ship Gravitational Tidal Shear Damage
+                    elif e_dist < 75 and e_type in ('heavy', 'berserker', 'commander'):
+                        e['hp'] -= 0.35
+                        if e['hp'] <= 0:
+                            if e in e_list:
+                                e_list.remove(e)
+                            vfx_engine.emit_spaghettification_implosion(e['rect'].centerx, e['rect'].centery, enemy_type=e_type)
+                            expl_snd.play()
+                            current_level_kills += 1
+                            score += coin_val * 10
+                            for _ in range(max(1, coin_val)):
+                                coins.append({
+                                    'rect': pygame.Rect(e['rect'].centerx, e['rect'].centery, 20, 20),
+                                    'vx': random.uniform(-2, 2),
+                                    'vy': random.uniform(1, 4)
+                                })
+                            continue
+
                 # Enemy collision with player
                 if e['rect'].colliderect(player_rect):
                     player_rect.y = min(PLAYER_MAX_Y, player_rect.y + 10)
@@ -2154,6 +2193,20 @@ while running:
             if abs(vx) < 0.001 and abs(vy - 1.0) < 0.001:
                 vy = base_eb_speed
 
+            # Relativistic trajectory curvature near Black Hole
+            if is_blackhole:
+                ebdx = BH_X - eb['rect'].centerx
+                ebdy = BH_Y - eb['rect'].centery
+                ebdist = math.hypot(ebdx, ebdy)
+                if 0 < ebdist < 220:
+                    ebpull = min(2.5, 280.0 / (ebdist + 50.0))
+                    eb['fx'] += (ebdx / ebdist) * ebpull
+                    eb['fy'] += (ebdy / ebdist) * ebpull
+                if ebdist < 20:
+                    if eb in enemy_bullets:
+                        enemy_bullets.remove(eb)
+                        continue
+
             eb['fx'] += vx
             eb['fy'] += vy
             eb['rect'].x = int(eb['fx'])
@@ -2191,6 +2244,20 @@ while running:
         pb_speed = int(14 * env_speed_mult)
         for b in bullets[:]:
             b['rect'].y -= max(8, pb_speed)
+
+            # Relativistic trajectory curvature near Black Hole
+            if is_blackhole:
+                bdx = BH_X - b['rect'].centerx
+                bdy = BH_Y - b['rect'].centery
+                bdist = math.hypot(bdx, bdy)
+                if 0 < bdist < 220:
+                    bpull = min(3.0, 320.0 / (bdist + 45.0))
+                    b['rect'].x += int((bdx / bdist) * bpull)
+                if bdist < 20:
+                    if b in bullets:
+                        bullets.remove(b)
+                        continue
+
             hit = False
 
             if b in bullets:
