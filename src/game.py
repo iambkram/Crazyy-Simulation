@@ -84,7 +84,7 @@ def apply_display_mode(fullscreen):
     """Safely apply Fullscreen or Windowed display mode with hardware scaling preserved."""
     global screen, is_fullscreen
     if is_mobile():
-        is_fullscreen = True
+        is_fullscreen = mobile_scaling.is_android_device()
         return screen
     screen, is_fullscreen = pc_windowing.apply_display_mode(screen, fullscreen)
     return screen
@@ -703,7 +703,7 @@ def load_game():
     if get_platform()["force_control_type"]:
         control_type = get_platform()["default_control_type"]
     if is_mobile():
-        is_fullscreen = True
+        is_fullscreen = mobile_scaling.is_android_device()
 
 def reset_level_logic(level=None):
     global current_level, player_health, player_rect, bullets, enemy_bullets
@@ -937,8 +937,6 @@ while running:
             m_wheel = event.y
         if event.type == pygame.MOUSEMOTION:
             mouse_dx, mouse_dy = event.rel
-            if is_mobile() and state == 3:
-                touch_hud.touch_engine.on_touch_motion(event.pos)
         if event.type == pygame.FINGERDOWN:
             if is_mobile() and state == 3:
                 fx, fy = int(event.x * WIDTH), int(event.y * HEIGHT)

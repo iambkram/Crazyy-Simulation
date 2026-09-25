@@ -39,8 +39,8 @@ class MobileTouchEngine:
         """Called when a touch down occurs on the playfield."""
         if hits_hud(pos):
             return False
-        # If already steering with an active physical finger, ignore synthetic mouse events
-        if self.steering_active and self.steering_finger_id is not None and finger_id == 'mouse':
+        # If already steering with an active finger/pointer, ignore secondary touches
+        if self.steering_active and self.steering_finger_id is not None and finger_id != self.steering_finger_id:
             return False
 
         self.steering_active = True
@@ -56,7 +56,7 @@ class MobileTouchEngine:
         """Called during touch dragging with zero deadzone lag."""
         if not self.steering_active:
             return
-        if finger_id is not None and self.steering_finger_id is not None and finger_id != self.steering_finger_id:
+        if self.steering_finger_id is not None and finger_id != self.steering_finger_id:
             return
 
         dx = pos[0] - self.prev_touch_pos[0]

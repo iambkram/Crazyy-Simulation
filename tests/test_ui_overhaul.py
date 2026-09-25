@@ -119,9 +119,18 @@ class TestUIOverhaul(unittest.TestCase):
         self.assertTrue(engine.steering_active)
         self.assertEqual(engine.steering_finger_id, 1)
 
+        # Multi-touch: Second finger (ID 2) touches down on playfield -> must NOT steal steering
+        second_accepted = engine.on_touch_down((500, 400), finger_id=2, current_ship_x=ship_rect.x, current_ship_y=ship_rect.y)
+        self.assertFalse(second_accepted, "Secondary touch down must not steal steering while active finger is dragging")
+        self.assertEqual(engine.steering_finger_id, 1)
+
         # Multi-touch: Second finger (ID 2) moves on fire button area or elsewhere
         engine.on_touch_motion((700, 500), finger_id=2)
         # Target pos should NOT have been affected by finger 2
+        self.assertEqual(engine.target_ship_pos, [float(WIDTH // 2), float(HEIGHT - 100)])
+
+        # Untracked/synthetic event with finger_id=None must NOT affect target pos when finger 1 is steering
+        engine.on_touch_motion((700, 500), finger_id=None)
         self.assertEqual(engine.target_ship_pos, [float(WIDTH // 2), float(HEIGHT - 100)])
 
         # Steering finger moves by +40px horizontally and -30px vertically
