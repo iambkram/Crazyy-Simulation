@@ -10,6 +10,8 @@ from assets import (draw_text, draw_text_shadow, draw_neon_text, draw_divider, d
                     RED, WHITE, LIGHT_GRAY, MID_GRAY, PANEL_BG, PANEL_MID, PLASMA_CORE)
 from vfx import draw_neon_auth_bg
 from settings import WIDTH, HEIGHT
+from platform_config import is_mobile
+from ui.ui_system import ui_manager, play_sfx
 
 
 class AuthUI:
@@ -235,77 +237,63 @@ class AuthUI:
         draw_divider(screen, 175, 178, 625, NEON_CYAN, alpha=50)
 
         # ── Primary Option: Continue with Google ──
-        btn_google = pygame.Rect(175, 200, 450, 82)
-        is_h_g = btn_google.collidepoint(mx, my)
-
-        g_surf = pygame.Surface((btn_google.width, btn_google.height), pygame.SRCALPHA)
-        g_bg = (18, 26, 46, 240) if not is_h_g else (26, 38, 68, 255)
-        pygame.draw.rect(g_surf, g_bg, g_surf.get_rect(), border_radius=16)
-        g_border = (66, 133, 244) if is_h_g else (50, 70, 100)
-        pygame.draw.rect(g_surf, g_border, g_surf.get_rect(), width=2 if is_h_g else 1, border_radius=16)
-        screen.blit(g_surf, btn_google.topleft)
-
-        # Google Vector Icon
+        btn_google = pygame.Rect(175, 190, 450, 78)
+        clk_google, is_h_g, _ = ui_manager.button(
+            screen, "auth_btn_google", btn_google, "",
+            is_mobile=is_mobile(), accent=(66, 133, 244), base_color=(18, 26, 46), border_radius=16
+        )
         self._draw_google_g_logo(screen, btn_google.x + 36, btn_google.centery, radius=15)
-
-        # Google Text (Explicit Non-Overlapping Layout)
         t_g1 = FONT_AUTH_TITLE.render("Continue with Google", True, WHITE)
         t_g2 = FONT_AUTH_SUB.render("Instant Cloud Sync  ·  Cross-Platform Save", True, (130, 160, 205))
-        screen.blit(t_g1, (btn_google.x + 68, btn_google.y + 16))
-        screen.blit(t_g2, (btn_google.x + 68, btn_google.y + 48))
+        screen.blit(t_g1, (btn_google.x + 68, btn_google.y + 14))
+        screen.blit(t_g2, (btn_google.x + 68, btn_google.y + 46))
 
         # ── Secondary Option: Play as Guest Pilot ──
-        btn_guest = pygame.Rect(175, 302, 450, 82)
-        is_h_guest = btn_guest.collidepoint(mx, my)
-
-        gst_surf = pygame.Surface((btn_guest.width, btn_guest.height), pygame.SRCALPHA)
-        gst_bg = (24, 22, 34, 240) if not is_h_guest else (38, 32, 50, 255)
-        pygame.draw.rect(gst_surf, gst_bg, gst_surf.get_rect(), border_radius=16)
-        gst_border = NEON_GOLD if is_h_guest else (70, 65, 80)
-        pygame.draw.rect(gst_surf, gst_border, gst_surf.get_rect(), width=2 if is_h_guest else 1, border_radius=16)
-        screen.blit(gst_surf, btn_guest.topleft)
-
-        # Rocket Vector Icon
+        btn_guest = pygame.Rect(175, 280, 450, 78)
+        clk_guest, is_h_guest, _ = ui_manager.button(
+            screen, "auth_btn_guest", btn_guest, "",
+            is_mobile=is_mobile(), accent=NEON_GOLD, base_color=(24, 22, 34), border_radius=16
+        )
         self._draw_vector_rocket(screen, btn_guest.x + 36, btn_guest.centery, color=NEON_GOLD)
-
-        # Guest Text (Explicit Non-Overlapping Layout)
         t_gst1 = FONT_AUTH_TITLE.render("Play as Guest Pilot", True, WHITE)
         t_gst2 = FONT_AUTH_SUB.render("Instant Offline Play  ·  Link Account Later", True, (190, 170, 130))
-        screen.blit(t_gst1, (btn_guest.x + 68, btn_guest.y + 16))
-        screen.blit(t_gst2, (btn_guest.x + 68, btn_guest.y + 48))
+        screen.blit(t_gst1, (btn_guest.x + 68, btn_guest.y + 14))
+        screen.blit(t_gst2, (btn_guest.x + 68, btn_guest.y + 46))
 
         # ── Auth Status Messages / Toast ──
         if cloud_sync.auth_status == "WAITING":
-            self._draw_toast_alert(screen, "Opening browser for Google Authentication...", 400, 420, is_error=False)
+            self._draw_toast_alert(screen, "Opening browser for Google Authentication...", 400, 395, is_error=False)
         elif cloud_sync.auth_status == "SUCCESS":
             self.setup_google_info = cloud_sync.auth_result_info
             cloud_sync.auth_status = None
             if self.setup_google_info and self.setup_google_info.get("auto_logged_in", False):
                 self.reset_form()
+                ui_manager.notify_state_change(-6)
                 return -6
             self.reset_form()
+            ui_manager.notify_state_change(-4)
             return -4
         elif cloud_sync.auth_status in ("FAILED", "CANCELLED"):
             self.login_error_msg = cloud_sync.auth_result_info.get("error", "Google Sign-In Cancelled")
             cloud_sync.auth_status = None
 
         if self.login_error_msg:
-            self._draw_toast_alert(screen, self.login_error_msg, 400, 420, is_error=True)
+            self._draw_toast_alert(screen, self.login_error_msg, 400, 395, is_error=True)
 
         # Security footer
-        draw_text("256-BIT ENCRYPTED CLOUD ARCHITECTURE", FONT_AUTH_SUB, (70, 95, 130), 400, 515)
+        draw_text("256-BIT ENCRYPTED CLOUD ARCHITECTURE", FONT_AUTH_SUB, (70, 95, 130), 400, 495)
 
         # Handle Clicks
-        if (m_c or key_enter) and cloud_sync.auth_status != "WAITING":
-            if is_h_g:
-                tap_snd.play()
-                self.login_error_msg = ""
-                cloud_sync.login_google_async()
-            elif is_h_guest:
-                tap_snd.play()
-                cloud_sync.login_guest()
-                self.login_error_msg = ""
-                return -6
+        if (clk_google or (key_enter and is_h_g)) and cloud_sync.auth_status != "WAITING":
+            play_sfx("ui_tap")
+            self.login_error_msg = ""
+            cloud_sync.login_google_async()
+        elif (clk_guest or (key_enter and is_h_guest)) and cloud_sync.auth_status != "WAITING":
+            play_sfx("ui_tap")
+            cloud_sync.login_guest()
+            self.login_error_msg = ""
+            ui_manager.notify_state_change(-6)
+            return -6
 
         return -3
 
@@ -328,35 +316,39 @@ class AuthUI:
         draw_text(f"Welcome, Commander {name}", FONT_AUTH_TITLE, WHITE, 400, 180)
         draw_divider(screen, 190, 202, 610, NEON_GREEN, alpha=40)
 
-        btn_signup = pygame.Rect(185, 230, 430, 70)
-        btn_login  = pygame.Rect(185, 320, 430, 70)
-        is_h_signup = btn_signup.collidepoint(mx, my)
-        is_h_login  = btn_login.collidepoint(mx, my)
+        btn_signup = pygame.Rect(185, 230, 430, 68)
+        btn_login  = pygame.Rect(185, 318, 430, 68)
+        btn_back   = pygame.Rect(250, 440, 300, 44)
 
-        draw_plasma_button(screen, "CREATE NEW PILOT PROFILE", FONT_UI, WHITE, btn_signup,
-                           (0, 140, 60), is_h_signup, pulse_t=ui_pulse_t, accent=NEON_GREEN, border_radius=14)
-        draw_plasma_button(screen, "CONNECT EXISTING PROFILE", FONT_UI, WHITE, btn_login,
-                           (0, 70, 160), is_h_login, pulse_t=ui_pulse_t, accent=NEON_BLUE, border_radius=14)
+        clk_signup, _, _ = ui_manager.button(
+            screen, "auth_g_signup", btn_signup, "CREATE NEW PILOT PROFILE",
+            is_mobile=is_mobile(), accent=NEON_GREEN, base_color=(0, 100, 45),
+            font=FONT_UI, border_radius=14
+        )
+        clk_login, _, _ = ui_manager.button(
+            screen, "auth_g_login", btn_login, "CONNECT EXISTING PROFILE",
+            is_mobile=is_mobile(), accent=NEON_BLUE, base_color=(0, 60, 130),
+            font=FONT_UI, border_radius=14
+        )
+        clk_back, _, _ = ui_manager.button(
+            screen, "auth_g_back", btn_back, "< BACK",
+            is_mobile=is_mobile(), accent=NEON_PINK, base_color=(100, 20, 35),
+            font=FONT_SMALL, border_radius=10
+        )
 
-        btn_back = pygame.Rect(250, 440, 300, 42)
-        is_h_bk = btn_back.collidepoint(mx, my)
-        draw_plasma_button(screen, "< BACK", FONT_SMALL, WHITE, btn_back,
-                           (120, 20, 40), is_h_bk, pulse_t=0, accent=NEON_PINK, border_radius=10)
-
-        if m_c or key_enter or key_escape:
-            if is_h_signup:
-                tap_snd.play()
-                self.reset_form()
-                self.active_tab = "signup"
-                return -4.1
-            elif is_h_login:
-                tap_snd.play()
-                self.reset_form()
-                self.active_tab = "login"
-                return -4.2
-            elif is_h_bk or key_escape:
-                tap_snd.play()
-                return -3
+        if clk_signup:
+            self.reset_form()
+            self.active_tab = "signup"
+            ui_manager.notify_state_change(-4.1)
+            return -4.1
+        elif clk_login:
+            self.reset_form()
+            self.active_tab = "login"
+            ui_manager.notify_state_change(-4.2)
+            return -4.2
+        elif clk_back or key_escape:
+            ui_manager.notify_state_change(-3)
+            return -3
 
         return -4
 
@@ -382,29 +374,28 @@ class AuthUI:
 
             tab_login_rect = pygame.Rect(tab_bar.x + 4, tab_bar.y + 4, 218, 36)
             tab_signup_rect = pygame.Rect(tab_bar.x + 228, tab_bar.y + 4, 218, 36)
-            is_h_tlogin = tab_login_rect.collidepoint(mx, my)
-            is_h_tsignup = tab_signup_rect.collidepoint(mx, my)
 
-            # Active Tab Slider
-            active_rect = tab_signup_rect if is_signup else tab_login_rect
-            pill_surf = pygame.Surface((active_rect.width, active_rect.height), pygame.SRCALPHA)
-            pill_col = (0, 140, 60, 240) if is_signup else (0, 90, 160, 240)
-            pygame.draw.rect(pill_surf, pill_col, pill_surf.get_rect(), border_radius=18)
-            pygame.draw.rect(pill_surf, accent, pill_surf.get_rect(), width=1, border_radius=18)
-            screen.blit(pill_surf, active_rect.topleft)
+            clk_tlogin, _, _ = ui_manager.button(
+                screen, "auth_tab_login", tab_login_rect, "LOG IN",
+                is_mobile=is_mobile(), accent=NEON_CYAN if not is_signup else (60, 80, 100),
+                base_color=(0, 90, 160) if not is_signup else (14, 18, 30),
+                font=FONT_AUTH_TITLE, border_radius=18
+            )
+            clk_tsignup, _, _ = ui_manager.button(
+                screen, "auth_tab_signup", tab_signup_rect, "SIGN UP",
+                is_mobile=is_mobile(), accent=NEON_GREEN if is_signup else (60, 80, 100),
+                base_color=(0, 140, 60) if is_signup else (14, 18, 30),
+                font=FONT_AUTH_TITLE, border_radius=18
+            )
 
-            draw_text("LOG IN", FONT_AUTH_TITLE, WHITE if not is_signup else (130, 150, 180), tab_login_rect.centerx, tab_login_rect.centery)
-            draw_text("SIGN UP", FONT_AUTH_TITLE, WHITE if is_signup else (130, 150, 180), tab_signup_rect.centerx, tab_signup_rect.centery)
-
-            if m_c:
-                if is_h_tlogin and is_signup:
-                    tap_snd.play()
-                    self.login_error_msg = ""
-                    return -4.2
-                elif is_h_tsignup and not is_signup:
-                    tap_snd.play()
-                    self.login_error_msg = ""
-                    return -4.1
+            if clk_tlogin and is_signup:
+                self.login_error_msg = ""
+                ui_manager.notify_state_change(-4.2)
+                return -4.2
+            elif clk_tsignup and not is_signup:
+                self.login_error_msg = ""
+                ui_manager.notify_state_change(-4.1)
+                return -4.1
         else:
             draw_badge(screen, "// BIND GOOGLE ACCOUNT //", FONT_AUTH_SUB, 400, 84,
                        bg_color=(35, 25, 10), text_color=NEON_GOLD, border_color=NEON_GOLD)
@@ -414,44 +405,37 @@ class AuthUI:
         pass_rect = pygame.Rect(175, 210, 395, 56)
         eye_rect  = pygame.Rect(576, 210, 49, 56)
 
-        is_h_user = user_rect.collidepoint(mx, my)
-        is_h_pass = pass_rect.collidepoint(mx, my)
-        is_h_eye  = eye_rect.collidepoint(mx, my)
-
-        if m_c:
-            if is_h_user:
+        if ui_manager.pointer_just_down:
+            if user_rect.collidepoint(ui_manager.pointer_pos):
                 self.setup_active_field = "username"
                 self._ensure_keyboard(True)
-            elif is_h_pass:
+            elif pass_rect.collidepoint(ui_manager.pointer_pos):
                 self.setup_active_field = "password"
                 self._ensure_keyboard(True)
-            elif is_h_eye:
-                tap_snd.play()
-                self.show_password = not self.show_password
+
+        clk_eye, _, _ = ui_manager.button(
+            screen, "auth_btn_eye", eye_rect, "",
+            is_mobile=is_mobile(), accent=NEON_CYAN, base_color=(20, 28, 48), border_radius=12
+        )
+        if clk_eye:
+            self.show_password = not self.show_password
 
         # Draw Inputs
         self._draw_modern_input(screen, user_rect, "Pilot Codename (Username)", self.setup_username,
                                 self.setup_active_field == "username", False, False, now)
         self._draw_modern_input(screen, pass_rect, "Security Key (Password)", self.setup_password,
                                 self.setup_active_field == "password", True, self.show_password, now)
-
-        # Eye Toggle Button
-        eye_surf = pygame.Surface((eye_rect.width, eye_rect.height), pygame.SRCALPHA)
-        eye_bg = (25, 34, 58, 240) if is_h_eye else (18, 24, 42, 220)
-        pygame.draw.rect(eye_surf, eye_bg, eye_surf.get_rect(), border_radius=12)
-        pygame.draw.rect(eye_surf, NEON_CYAN if is_h_eye else (55, 70, 98), eye_surf.get_rect(), width=1, border_radius=12)
-        screen.blit(eye_surf, eye_rect.topleft)
         self._draw_vector_eye(screen, eye_rect.centerx, eye_rect.centery, is_open=self.show_password, color=NEON_CYAN if self.show_password else LIGHT_GRAY)
 
         # ── Forgot Password Link ──
-        is_h_forgot = False
+        clk_forgot = False
         if not is_signup and not is_bind:
-            forgot_rect = pygame.Rect(175, 276, 450, 22)
-            is_h_forgot = forgot_rect.collidepoint(mx, my)
-            f_col = NEON_CYAN if is_h_forgot else (120, 150, 190)
-            draw_text("Forgot Password? (Requires Google link)", FONT_AUTH_SUB, f_col, 400, 286)
-            if is_h_forgot:
-                pygame.draw.line(screen, f_col, (260, 294), (540, 294), 1)
+            forgot_rect = pygame.Rect(175, 276, 450, 26)
+            clk_forgot, is_h_forgot, _ = ui_manager.button(
+                screen, "auth_btn_forgot", forgot_rect, "Forgot Password? (Requires Google link)",
+                is_mobile=is_mobile(), accent=NEON_CYAN if is_h_forgot else (120, 150, 190),
+                base_color=(10, 14, 26), font=FONT_AUTH_SUB, border_radius=6
+            )
 
         # ── Toast Error Alert ──
         if self.login_error_msg:
@@ -459,21 +443,25 @@ class AuthUI:
 
         # ── Submit Button ──
         btn_submit = pygame.Rect(175, 356, 450, 60)
-        is_h_sub = btn_submit.collidepoint(mx, my)
         submit_txt = "CONFIRM ACCOUNT BINDING" if is_bind else ("CREATE PILOT ACCOUNT" if is_signup else "LAUNCH MISSION / LOG IN")
         sub_col = (0, 140, 60) if is_signup else ((140, 90, 0) if is_bind else (0, 80, 170))
-        draw_plasma_button(screen, submit_txt, FONT_UI, WHITE, btn_submit,
-                           sub_col, is_h_sub, pulse_t=ui_pulse_t, accent=accent, border_radius=14)
+        clk_sub, _, _ = ui_manager.button(
+            screen, "auth_btn_sub", btn_submit, submit_txt,
+            is_mobile=is_mobile(), accent=accent, base_color=sub_col,
+            font=FONT_UI, border_radius=14
+        )
 
         # ── Back Button ──
         btn_back = pygame.Rect(235, 436, 330, 40)
-        is_h_bk = btn_back.collidepoint(mx, my)
-        draw_plasma_button(screen, "< BACK", FONT_SMALL, WHITE, btn_back,
-                           (120, 20, 40), is_h_bk, pulse_t=0, accent=NEON_PINK, border_radius=10)
+        clk_bk, _, _ = ui_manager.button(
+            screen, "auth_btn_bk", btn_back, "< BACK",
+            is_mobile=is_mobile(), accent=NEON_PINK, base_color=(100, 20, 35),
+            font=FONT_SMALL, border_radius=10
+        )
 
         # ── Handlers ──
-        if (m_c and is_h_forgot):
-            tap_snd.play()
+        if clk_forgot:
+            play_sfx("ui_tap")
             if not self.setup_google_info:
                 self.login_error_msg = "Must Continue with Google to reset password."
             elif len(self.setup_username) < 3 or len(self.setup_password) < 3:
@@ -483,24 +471,27 @@ class AuthUI:
                 if success:
                     cloud_sync.queue_sync({})
                     self._ensure_keyboard(False)
+                    ui_manager.notify_state_change(-6)
                     return -6
                 else:
                     self.login_error_msg = msg
             return -4.2
 
-        if (m_c and is_h_bk) or key_escape:
-            tap_snd.play()
+        if clk_bk or key_escape:
+            play_sfx("ui_tap")
             self.login_error_msg = ""
             self._ensure_keyboard(False)
-            return 9 if is_bind else -4
+            target = 9 if is_bind else -4
+            ui_manager.notify_state_change(target)
+            return target
 
-        if (m_c and is_h_sub) or key_enter:
+        if clk_sub or key_enter:
             if len(self.setup_username) < 3:
                 self.login_error_msg = "Username must be at least 3 characters."
             elif len(self.setup_password) < 3:
                 self.login_error_msg = "Password must be at least 3 characters."
             else:
-                tap_snd.play()
+                play_sfx("ui_tap")
                 success = False
                 msg = ""
                 if is_bind:
@@ -515,6 +506,7 @@ class AuthUI:
                 if success:
                     cloud_sync.queue_sync({})
                     self._ensure_keyboard(False)
+                    ui_manager.notify_state_change(-6)
                     return -6
                 else:
                     self.login_error_msg = msg

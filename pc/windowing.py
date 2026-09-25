@@ -1,6 +1,9 @@
 """PC windowing: 800x600 windowed, resizable, desktop fullscreen (F11 / settings)."""
 import pygame
-from settings import WIDTH, HEIGHT
+try:
+    from settings import WIDTH, HEIGHT
+except ImportError:
+    from src.settings import WIDTH, HEIGHT
 
 
 def display_flags(use_scaled=True, resizable=True, fullscreen=False):
@@ -24,7 +27,18 @@ def create_window(fullscreen=False, use_scaled=True, resizable=True):
 def apply_display_mode(screen, fullscreen):
     """Toggle desktop fullscreen while keeping SCALED letterboxing."""
     target = bool(fullscreen)
-    current = bool(screen.get_flags() & pygame.FULLSCREEN)
-    if current != target:
-        pygame.display.toggle_fullscreen()
-    return pygame.display.get_surface(), target
+    if screen is None:
+        screen = pygame.display.get_surface()
+    if screen is not None:
+        try:
+            current = bool(screen.get_flags() & pygame.FULLSCREEN)
+            if current != target:
+                try:
+                    pygame.display.toggle_fullscreen()
+                except (pygame.error, Exception):
+                    pass
+        except Exception:
+            pass
+    surf = pygame.display.get_surface()
+    return (surf if surf is not None else screen), target
+

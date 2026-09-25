@@ -18,9 +18,9 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 try:
-    from src.platform_config import configure_mobile
-except ImportError:
     from platform_config import configure_mobile
+except ImportError:
+    from src.platform_config import configure_mobile
 
 configure_mobile()
 

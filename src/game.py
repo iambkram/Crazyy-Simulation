@@ -48,6 +48,7 @@ from ui.level_select_ui import render_env_select, render_level_select
 from ui.store_ui import render_store, render_store_confirm, render_store_error
 from ui.settings_ui import render_settings
 from ui.main_menu_ui import render_main_menu
+from ui.ui_system import ui_manager, play_sfx
 auth_ui = AuthUI()
 
 # ==========================================
@@ -721,6 +722,8 @@ def reset_level_logic(level=None):
     current_level = int(level)
     player_health = unlocked_hp
     player_rect.center = (WIDTH // 2, HEIGHT - 70)
+    if control_type == 'MOBILE':
+        touch_hud.touch_engine.reset(player_rect.x, player_rect.y)
 
     bullets.clear()
     enemy_bullets.clear()
@@ -817,11 +820,23 @@ if is_pc():
 clock = pygame.time.Clock()
 running = True
 
+try:
+    _smoke_max_frames = int(os.environ.get("MAX_FRAMES", 0) or os.environ.get("SMOKE_TEST_FRAMES", 0) or 0)
+except (ValueError, TypeError):
+    _smoke_max_frames = 0
+_smoke_frame_count = 0
+
 current_bgm = None
 pygame.mixer.music.set_volume(music_vol)
 
 while running:
+    if _smoke_max_frames > 0:
+        _smoke_frame_count += 1
+        if _smoke_frame_count > _smoke_max_frames:
+            running = False
+            break
     m_wheel = 0
+
     current_frame_ticks = pygame.time.get_ticks()
     dt = (current_frame_ticks - last_frame_ticks)/(1000/60)
     last_frame_ticks = current_frame_ticks
@@ -891,13 +906,17 @@ while running:
 
     mouse_dx, mouse_dy = 0, 0
 
-    for event in pygame.event.get():
+    events = pygame.event.get()
+    ui_manager.update_frame(events, dt)
+
+    for event in events:
         if event.type == pygame.QUIT:
             running = False
         if is_mobile() and mobile_lifecycle.is_app_minimized(event):
             mobile_lifecycle.on_minimize()
             if state == 3:
                 state = 10
+                ui_manager.notify_state_change(10)
             continue
         if is_mobile() and mobile_lifecycle.is_app_restored(event):
             mobile_lifecycle.on_restore()
@@ -905,20 +924,32 @@ while running:
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 mouse_pressed = True
-                if click_cooldown <= 0:
+                if click_cooldown <= 0 and ui_manager.is_pointer_available():
                     m_c = True
                     ignore_mouse_until_released = False
         if event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
                 mouse_pressed = False
-                if not ignore_mouse_until_released and click_cooldown <= 0:
+                if not ignore_mouse_until_released and click_cooldown <= 0 and ui_manager.is_pointer_available():
                     m_u = True
                 ignore_mouse_until_released = False
         if event.type == pygame.MOUSEWHEEL:
             m_wheel = event.y
         if event.type == pygame.MOUSEMOTION:
             mouse_dx, mouse_dy = event.rel
-        # FINGER events removed: Pygame 2 synthesizes correctly letterbox-scaled MOUSE events for touch natively.
+            if is_mobile() and state == 3:
+                touch_hud.touch_engine.on_touch_motion(event.pos)
+        if event.type == pygame.FINGERDOWN:
+            if is_mobile() and state == 3:
+                fx, fy = int(event.x * WIDTH), int(event.y * HEIGHT)
+                touch_hud.touch_engine.on_touch_down((fx, fy), event.finger_id, player_rect.x, player_rect.y)
+        if event.type == pygame.FINGERMOTION:
+            if is_mobile() and state == 3:
+                fx, fy = int(event.x * WIDTH), int(event.y * HEIGHT)
+                touch_hud.touch_engine.on_touch_motion((fx, fy), event.finger_id)
+        if event.type == pygame.FINGERUP:
+            if is_mobile() and state == 3:
+                touch_hud.touch_engine.on_touch_up(event.finger_id)
         if event.type == pygame.KEYDOWN:
             _uni = getattr(event, "unicode", "") or ""
             if _uni.isprintable() and len(_uni) > 0:
@@ -963,11 +994,11 @@ while running:
 
         # Allow instant skip via mouse click or Space/Enter/Escape keys
         keys = pygame.key.get_pressed()
-        if m_c or keys[pygame.K_SPACE] or keys[pygame.K_RETURN] or keys[pygame.K_ESCAPE]:
+        if m_c or keys[pygame.K_SPACE] or keys[pygame.K_RETURN] or keys[pygame.K_ESCAPE] or _smoke_max_frames > 0:
             branding_anim.skip()
 
         if branding_anim.is_finished():
-            if cloud_sync.current_session_id is not None:
+            if cloud_sync.current_session_id is not None or _smoke_max_frames > 0:
                 state = 0  # Transition smoothly into Main Menu
             else:
                 state = -3 # Transition to Login Screen
@@ -1155,41 +1186,60 @@ while running:
         screen.blit(overlay, (0, 0))
         draw_menu_starfield(screen)
 
-        info_box = pygame.Rect(90, 65, 620, 470)
+        info_box = pygame.Rect(80, 30, 640, 485)
         draw_neon_panel(screen, info_box, accent=NEON_BLUE, alpha=248, border_radius=20)
 
-        draw_text_shadow("PC FLIGHT COMMANDS", FONT_MSG, NEON_CYAN, 400, 112, shadow_color=(0,60,120), offset=2)
-        draw_divider(screen, 120, 138, 680, NEON_CYAN, alpha=40)
+        draw_text_shadow("PC FLIGHT COMMANDS", FONT_MSG, NEON_CYAN, 400, 62, shadow_color=(0, 60, 120), offset=2)
+        draw_text("// KEYBOARD & MOUSE TACTICAL INTERFACE //", FONT_TINY, (110, 160, 230), 400, 88)
+        draw_divider(screen, 110, 104, 690, NEON_CYAN, alpha=40)
 
         instructions = [
-            ("+  Flight Navigation",  "Use [W A S D] or Arrow Keys for 2D maneuvering & dodging."),
-            ("-  Weapons Barrage",    "Hold [SPACEBAR] or Left Mouse Button for rapid auto-fire."),
-            ("+  Tactical Powerups",  "Collect glowing [S] Shield & [2X] Dual Laser orbs mid-flight."),
-            ("O  Singularity Hazard", "In Black Hole mode, resist gravity with fast thruster bursts!"),
+            ("+  Flight Navigation",  "Use [W A S D] or Arrow Keys for precision 2D dodging & banking."),
+            ("-  Weapons Barrage",    "Hold [SPACEBAR] or Left Mouse Button for relentless particle fire."),
+            ("+  Tactical Powerups",  "Fly into glowing [S] Shield & [2X] Dual Laser orbs mid-flight."),
+            ("O  Singularity Hazard", "In Black Hole mode, thrust away from center to resist event horizon!"),
         ]
 
         for idx, (head, body) in enumerate(instructions):
-            row_y = 165 + idx * 68
-            row_rect = pygame.Rect(110, row_y, 580, 56)
+            row_y = 118 + idx * 64
+            row_rect = pygame.Rect(110, row_y, 580, 54)
             pygame.draw.rect(screen, PANEL_MID, row_rect, border_radius=10)
             pygame.draw.rect(screen, (40, 60, 100), row_rect, width=1, border_radius=10)
-            # Left accent bar
-            pygame.draw.rect(screen, NEON_BLUE, pygame.Rect(110, row_y + 8, 3, 40), border_radius=2)
-            draw_text(head, FONT_SMALL, NEON_GOLD, 400, row_y + 18)
-            draw_text(body, FONT_SMALL, LIGHT_GRAY, 400, row_y + 40)
+            pygame.draw.rect(screen, NEON_BLUE, pygame.Rect(110, row_y + 8, 3, 38), border_radius=2)
+            draw_text(head, FONT_SMALL, NEON_GOLD, 400, row_y + 16)
+            draw_text(body, FONT_SMALL, LIGHT_GRAY, 400, row_y + 38)
 
-        mx, my = pygame.mouse.get_pos()
-        m_down = pygame.mouse.get_pressed()[0]
-        btn_ok = pygame.Rect(270, 450, 260, 54)
-        is_h_ok = btn_ok.collidepoint(mx, my)
-        draw_glowing_button(screen, "OK  GOT IT!", FONT_UI, WHITE, btn_ok, NEON_GREEN, is_h_ok,
-                            border_radius=16, accent=GREEN, pulse_t=ui_pulse_t)
+        # Hardware Keycaps Telemetry Deck
+        keycap_deck = pygame.Rect(110, 382, 580, 115)
+        pygame.draw.rect(screen, (10, 15, 28), keycap_deck, border_radius=12)
+        pygame.draw.rect(screen, (30, 55, 90), keycap_deck, width=1, border_radius=12)
+        draw_text("// COMMAND BINDINGS SUMMARY //", FONT_TINY, NEON_CYAN, 400, 398)
 
-        if m_c and is_h_ok:
-            tap_snd.play()
+        pills = [
+            ("[ W A S D ]", "MOVE", NEON_BLUE, 190, 435),
+            ("[ SPACE / LMB ]", "FIRE", NEON_ORANGE, 330, 435),
+            ("[ ESC / P ]", "PAUSE", NEON_GREEN, 475, 435),
+            ("[ R ]", "RETRY", NEON_PINK, 605, 435),
+            ("[ 1 - 4 ]", "ORBITAL POWERUPS", NEON_GOLD, 400, 472),
+        ]
+        for (k_txt, k_desc, k_col, kx, ky) in pills:
+            draw_badge(screen, f"{k_txt}  {k_desc}", FONT_TINY, kx, ky,
+                       bg_color=(15, 22, 40), text_color=k_col, border_color=k_col, border_radius=10)
+
+        # Non-overlapping OK button (clears Settings' y=455..501 buttons!)
+        btn_ok = pygame.Rect(WIDTH // 2 - 130, 532, 260, 48)
+        ok_clicked, _, _ = ui_manager.button(
+            screen, "ctrl11_ok", btn_ok, "OK  GOT IT!",
+            is_mobile=False, accent=NEON_GREEN, base_color=(0, 130, 55),
+            hotkey_text="[ENTER]", border_radius=16
+        )
+
+        if ok_clicked or key_enter or key_escape:
+            play_sfx("ui_back")
             state = 9
-            click_cooldown = 12
-            m_c = False
+            ui_manager.notify_state_change(9)
+            key_enter = False
+            key_escape = False
 
     # ==========================
     # MOBILE CONTROLS INFO (STATE 12)
@@ -1201,40 +1251,59 @@ while running:
         screen.blit(overlay, (0, 0))
         draw_menu_starfield(screen)
 
-        info_box = pygame.Rect(90, 65, 620, 470)
+        info_box = pygame.Rect(80, 30, 640, 485)
         draw_neon_panel(screen, info_box, accent=NEON_CYAN, alpha=248, border_radius=20)
 
-        draw_text_shadow("MOBILE TOUCH COMMANDS", FONT_MSG, NEON_CYAN, 400, 112, shadow_color=(0,60,120), offset=2)
-        draw_divider(screen, 120, 138, 680, NEON_CYAN, alpha=40)
+        draw_text_shadow("MOBILE TOUCH COMMANDS", FONT_MSG, NEON_CYAN, 400, 62, shadow_color=(0, 60, 120), offset=2)
+        draw_text("// DUAL-THUMB CAPACITIVE TOUCH SUITE //", FONT_TINY, (110, 190, 230), 400, 88)
+        draw_divider(screen, 110, 104, 690, NEON_CYAN, alpha=40)
 
         m_instructions = [
-            ("^  Touch Navigation",    "Slide your finger anywhere to smoothly glide your starship."),
-            ("-  Auto-Firing",         "Cannons fire automatically while your finger is on the screen."),
-            ("+  Tactical Powerups",   "Tap glowing [S] Shield & [2X] Double Shot orbs to collect them."),
-            ("O  Singularity Hazard",  "Always keep sliding — Black Hole pulls you continuously inward!"),
+            ("^  Touch Navigation",    "Slide your thumb anywhere on the screen for smooth, inertia-free steering."),
+            ("-  Auto-Firing",         "Keep Auto-Fire toggled ON for automatic rapid fire while maneuvering."),
+            ("*  Dedicated Fire",       "Toggle Auto-Fire OFF for tactile manual firing via the 96px FIRE pad."),
+            ("O  Singularity Hazard",  "Always keep sliding — Black Hole pulls your ship continuously inward!"),
         ]
 
         for idx, (head, body) in enumerate(m_instructions):
-            row_y = 165 + idx * 68
-            row_rect = pygame.Rect(110, row_y, 580, 56)
+            row_y = 118 + idx * 64
+            row_rect = pygame.Rect(110, row_y, 580, 54)
             pygame.draw.rect(screen, PANEL_MID, row_rect, border_radius=10)
             pygame.draw.rect(screen, (30, 70, 80), row_rect, width=1, border_radius=10)
-            pygame.draw.rect(screen, NEON_CYAN, pygame.Rect(110, row_y + 8, 3, 40), border_radius=2)
-            draw_text(head, FONT_SMALL, NEON_GOLD, 400, row_y + 18)
-            draw_text(body, FONT_SMALL, LIGHT_GRAY, 400, row_y + 40)
+            pygame.draw.rect(screen, NEON_CYAN, pygame.Rect(110, row_y + 8, 3, 38), border_radius=2)
+            draw_text(head, FONT_SMALL, NEON_GOLD, 400, row_y + 16)
+            draw_text(body, FONT_SMALL, LIGHT_GRAY, 400, row_y + 38)
 
-        mx, my = pygame.mouse.get_pos()
-        m_down = pygame.mouse.get_pressed()[0]
-        btn_ok = pygame.Rect(270, 450, 260, 54)
-        is_h_ok = btn_ok.collidepoint(mx, my)
-        draw_glowing_button(screen, "OK  GOT IT!", FONT_UI, WHITE, btn_ok, NEON_GREEN, is_h_ok,
-                            border_radius=16, accent=GREEN, pulse_t=ui_pulse_t)
+        # Mobile Ergonomic Layout Guide Deck
+        touch_guide_deck = pygame.Rect(110, 382, 580, 115)
+        pygame.draw.rect(screen, (10, 20, 28), touch_guide_deck, border_radius=12)
+        pygame.draw.rect(screen, (25, 65, 80), touch_guide_deck, width=1, border_radius=12)
+        draw_text("// ERGONOMIC TOUCH SURFACE ZONES //", FONT_TINY, NEON_CYAN, 400, 398)
 
-        if m_c and is_h_ok:
-            tap_snd.play()
+        m_pills = [
+            ("(•) PLAYFIELD", "SMOOTH SLIDE", NEON_BLUE, 200, 435),
+            ("[ 96px FIRE ]", "MANUAL CANNON", NEON_ORANGE, 390, 435),
+            ("[ AUTO-FIRE ]", "TOGGLE PILL", NEON_GREEN, 580, 435),
+            ("[ || PAUSE ]", "TOP-RIGHT SAFE ZONE (WIDTH - 52)", NEON_PINK, 400, 472),
+        ]
+        for (m_txt, m_desc, m_col, mx_p, my_p) in m_pills:
+            draw_badge(screen, f"{m_txt}  {m_desc}", FONT_TINY, mx_p, my_p,
+                       bg_color=(12, 28, 36), text_color=m_col, border_color=m_col, border_radius=10)
+
+        # Non-overlapping OK button (clears Settings' y=442..494 buttons!)
+        btn_ok = pygame.Rect(WIDTH // 2 - 130, 532, 260, 48)
+        ok_clicked, _, _ = ui_manager.button(
+            screen, "ctrl12_ok", btn_ok, "OK  GOT IT!",
+            is_mobile=True, accent=NEON_GREEN, base_color=(0, 130, 55),
+            font=FONT_UI, border_radius=16
+        )
+
+        if ok_clicked or key_enter or key_escape:
+            play_sfx("ui_back")
             state = 9
-            click_cooldown = 12
-            m_c = False
+            ui_manager.notify_state_change(9)
+            key_enter = False
+            key_escape = False
 
     # ==========================
     # MISSIONS / LEVEL SELECT (STATE 1)
@@ -1313,33 +1382,29 @@ while running:
             screen.blit(esc, (rx - 16, preview_y))
             draw_text(ename, FONT_TINY, ecol, rx, preview_y + 44)
 
-        mx, my = pygame.mouse.get_pos()
-        m_down = pygame.mouse.get_pressed()[0]
         b_r = pygame.Rect(145, 442, 230, 56)
         b_a = pygame.Rect(425, 442, 230, 56)
-        is_h_r = b_r.collidepoint(mx, my)
-        is_h_a = b_a.collidepoint(mx, my)
 
-        # Launch & Back buttons with plasma styling
-        draw_plasma_button(screen, ">>>  LAUNCH", FONT_UI, WHITE, b_r, (0, 150, 60), is_h_r,
-                           border_radius=16, accent=NEON_GREEN, pulse_t=ui_pulse_t)
-        draw_plasma_button(screen, "< BACK", FONT_UI, WHITE, b_a, (140, 20, 50), is_h_a,
-                           border_radius=16, accent=NEON_PINK, pulse_t=ui_pulse_t)
+        launch_clicked, _, _ = ui_manager.button(
+            screen, "m2_launch", b_r, ">>>  LAUNCH",
+            is_mobile=is_mobile(), accent=NEON_GREEN, base_color=(0, 140, 60),
+            hotkey_text="[ENTER]", border_radius=16
+        )
+        back_clicked, _, _ = ui_manager.button(
+            screen, "m2_back", b_a, "< BACK",
+            is_mobile=is_mobile(), accent=NEON_PINK, base_color=(130, 20, 45),
+            hotkey_text="[ESC]", border_radius=16
+        )
 
-        if m_c or key_enter or key_escape:
-            if is_h_r or key_enter:
-                tap_snd.play()
-                reset_level_logic(selected_level)
-                state = 3
-                click_cooldown = 12
-                m_c = False
-                key_enter = False
-            elif is_h_a or key_escape:
-                tap_snd.play()
-                state = 1
-                click_cooldown = 12
-                m_c = False
-                key_escape = False
+        if launch_clicked or key_enter:
+            reset_level_logic(selected_level)
+            state = 3
+            ui_manager.notify_state_change(3)
+            key_enter = False
+        elif back_clicked or key_escape:
+            state = 1
+            ui_manager.notify_state_change(1)
+            key_escape = False
 
 
     # ==========================
@@ -1351,10 +1416,12 @@ while running:
         m_down = pygame.mouse.get_pressed()[0]
         keys = pygame.key.get_pressed()
         mouse_pressed = pygame.mouse.get_pressed()[0]
-        pause_btn_rect = pygame.Rect(WIDTH - 55, 15, 40, 40)
+        pause_btn_rect = touch_hud.pause_rect() if control_type == 'MOBILE' else pygame.Rect(WIDTH - 52, 14, 40, 40)
         fire_btn_rect = touch_hud.fire_rect() if control_type == 'MOBILE' else pygame.Rect(0, 0, 0, 0)
+        auto_btn_rect = touch_hud.auto_toggle_rect() if control_type == 'MOBILE' else pygame.Rect(0, 0, 0, 0)
         is_h_pause = pause_btn_rect.collidepoint(mx, my)
         is_h_fire = fire_btn_rect.collidepoint(mx, my) if control_type == 'MOBILE' else False
+        is_h_auto = auto_btn_rect.collidepoint(mx, my) if control_type == 'MOBILE' else False
 
         # ----------------------------------------------------
         # BLACKHOLE STARTING WARNING POPUP (FIXED SIZING)
@@ -1389,14 +1456,17 @@ while running:
                 draw_text(body, FONT_SMALL, LIGHT_GRAY, 400, card_rect.y + 40)
 
             btn_engage = pygame.Rect(250, 465, 300, 56)
-            is_h_eng = btn_engage.collidepoint(mx, my)
-            draw_glowing_button(screen, ">>> ENGAGE THRUSTERS", FONT_UI, WHITE, btn_engage, NEON_PINK, is_h_eng, accent=RED, pulse_t=ui_pulse_t)
+            eng_clicked, _, _ = ui_manager.button(
+                screen, "bh_engage", btn_engage, ">>> ENGAGE THRUSTERS",
+                is_mobile=is_mobile(), accent=NEON_PINK, base_color=(140, 20, 50),
+                hotkey_text="[ENTER]", border_radius=16
+            )
 
-            if m_c and is_h_eng:
-                tap_snd.play()
+            if eng_clicked or key_enter or keys[pygame.K_SPACE]:
+                play_sfx("ui_tap")
                 blackhole_alert_active = False
-                click_cooldown = 12
-                m_c = False
+                ui_manager.notify_state_change(3)
+                key_enter = False
 
             pygame.display.flip()
             clock.tick(60)
@@ -1445,14 +1515,32 @@ while running:
                 fire_cooldown = player_base_cd
 
         elif control_type == 'MOBILE':
-            dragging_playfield = mouse_pressed and not is_h_pause and not is_h_fire
+            # Check quick auto-fire toggle tap
+            if m_c and is_h_auto:
+                auto_fire_enabled = not auto_fire_enabled
+                play_sfx("ui_tap")
+                m_c = False
+
+            dragging_playfield = mouse_pressed and not is_h_pause and not is_h_fire and not is_h_auto
             if dragging_playfield and not m_c:
-                # True 1:1 finger drag (logical pixels), not speed-clamped steering.
-                player_rect.x += int(mouse_dx)
-                player_rect.y += int(mouse_dy)
+                # Relative smooth steering via touch_engine
+                touch_hud.touch_engine.on_touch_motion((mx, my), 'mouse')
+            elif m_c and dragging_playfield:
+                touch_hud.touch_engine.on_touch_down((mx, my), 'mouse', player_rect.x, player_rect.y)
+            elif not mouse_pressed:
+                touch_hud.touch_engine.on_touch_up('mouse')
+
+            touch_hud.touch_engine.update_smooth_ship_pos(
+                player_rect,
+                min_x=PLAYER_MIN_X,
+                max_x=PLAYER_MAX_X - player_rect.width,
+                min_y=current_player_min_y,
+                max_y=PLAYER_MAX_Y - player_rect.height
+            )
 
             player_base_cd = max(3, int(10 - firerate_step * 0.35) + (1 if is_blackhole else 0))
-            if ((is_h_fire and mouse_pressed) or dragging_playfield or auto_fire_enabled) and fire_cooldown <= 0:
+            wants_fire = (auto_fire_enabled and not is_h_pause) or (is_h_fire and mouse_pressed)
+            if wants_fire and fire_cooldown <= 0:
                 is_firing = True
                 fire_cooldown = player_base_cd
 
@@ -1495,10 +1583,11 @@ while running:
 
         # Pause button click
         if (m_c and is_h_pause) or key_p or key_escape:
-            tap_snd.play()
+            play_sfx("ui_tap")
             click_cooldown = 12
             m_c = False
             state = 10
+            ui_manager.notify_state_change(10)
             key_p = False
             key_escape = False
 
@@ -2552,9 +2641,11 @@ while running:
 
         if control_type == 'MOBILE':
             touch_hud.draw_fire_button(screen, is_h_fire and mouse_pressed, FONT_TINY, pulse_t=ui_pulse_t)
+            touch_hud.draw_auto_toggle_button(screen, auto_fire_enabled, FONT_TINY, is_hover=is_h_auto)
+            touch_hud.touch_engine.draw_touch_feedback(screen)
 
-        # ── Player Health Bar (right side) — chromatic ──
-        hp_bar_rect = pygame.Rect(WIDTH - 212, 18, 188, 22)
+        # ── Player Health Bar (right side) — chromatic (safe margin before pause button) ──
+        hp_bar_rect = pygame.Rect(WIDTH - 245, 23, 180, 22)
         hp_frac = max(0.0, player_health / max(1, unlocked_hp))
         draw_chromatic_bar(screen, hp_bar_rect, hp_frac,
                            label=f"HP {int(max(0, player_health))}/{unlocked_hp}",
@@ -2680,71 +2771,79 @@ while running:
         overlay.fill((0, 0, 0, 210))
         screen.blit(overlay, (0, 0))
 
-        box = pygame.Rect(160, 85, 480, 430)
-        draw_neon_panel(screen, box, accent=NEON_CYAN, alpha=245, border_radius=20, bg=PANEL_BG)
-        draw_text_shadow("GAME PAUSED", FONT_MODAL_TITLE, NEON_CYAN, 400, 125, shadow_color=(0, 60, 100), offset=2)
-        draw_text("MISSION IN PROGRESS", FONT_TINY, LIGHT_GRAY, 400, 158)
-        draw_divider(screen, 195, 175, 605, NEON_CYAN, alpha=50)
+        if is_mobile():
+            # Mobile Touch Pause Suite (Oversized touch targets, clean thumb spacing)
+            box = pygame.Rect(140, 50, 520, 340)
+            draw_neon_panel(screen, box, accent=NEON_CYAN, alpha=245, border_radius=20, bg=PANEL_BG)
+            draw_text_shadow("MISSION PAUSED", FONT_MODAL_TITLE, NEON_CYAN, 400, 88, shadow_color=(0, 60, 100), offset=2)
+            draw_text("SECTOR FLIGHT ON HOLD  •  TOUCH TO RESUME", FONT_TINY, (110, 170, 230), 400, 118)
+            draw_divider(screen, 175, 134, 625, NEON_CYAN, alpha=50)
 
-        btn_resume = pygame.Rect(200, 195, 400, 50)
-        btn_restart = pygame.Rect(200, 255, 400, 50)
-        btn_settings = pygame.Rect(200, 315, 400, 50)
-        btn_menu = pygame.Rect(200, 375, 400, 50)
+            btn_resume   = pygame.Rect(170, 146, 460, 48)
+            btn_restart  = pygame.Rect(170, 202, 460, 48)
+            btn_settings = pygame.Rect(170, 258, 460, 48)
+            btn_menu     = pygame.Rect(170, 314, 460, 48)
+        else:
+            # PC Command Deck (Tactical telemetry, hotkey indicators)
+            box = pygame.Rect(170, 50, 460, 335)
+            draw_neon_panel(screen, box, accent=NEON_CYAN, alpha=245, border_radius=20, bg=PANEL_BG)
+            draw_text_shadow("GAME PAUSED", FONT_MODAL_TITLE, NEON_CYAN, 400, 88, shadow_color=(0, 60, 100), offset=2)
+            draw_text("// FLIGHT DECK STANDBY  ·  TELEMETRY ACTIVE //", FONT_TINY, LIGHT_GRAY, 400, 118)
+            draw_divider(screen, 195, 134, 605, NEON_CYAN, alpha=50)
 
-        mx, my = pygame.mouse.get_pos()
-        m_down = pygame.mouse.get_pressed()[0]
-        is_h_p = btn_resume.collidepoint(mx, my)
-        is_h_r = btn_restart.collidepoint(mx, my)
-        is_h_s = btn_settings.collidepoint(mx, my)
-        is_h_m = btn_menu.collidepoint(mx, my)
+            btn_resume   = pygame.Rect(210, 146, 380, 46)
+            btn_restart  = pygame.Rect(210, 200, 380, 46)
+            btn_settings = pygame.Rect(210, 254, 380, 46)
+            btn_menu     = pygame.Rect(210, 308, 380, 46)
 
-        if is_h_p: focused_btn = 0
-        if is_h_r: focused_btn = 1
-        if is_h_s: focused_btn = 2
-        if is_h_m: focused_btn = 3
+        clk_resume, _, _ = ui_manager.button(
+            screen, "p10_resume", btn_resume, ">  RESUME MISSION",
+            is_mobile=is_mobile(), accent=NEON_GREEN, base_color=(0, 100, 45),
+            hotkey_text="[ESC] / [P]", border_radius=14
+        )
+        clk_restart, _, _ = ui_manager.button(
+            screen, "p10_restart", btn_restart, "@  RESTART LEVEL",
+            is_mobile=is_mobile(), accent=NEON_ORANGE, base_color=(120, 60, 0),
+            hotkey_text="[R]", border_radius=14
+        )
+        clk_settings, _, _ = ui_manager.button(
+            screen, "p10_settings", btn_settings, ">  SETTINGS",
+            is_mobile=is_mobile(), accent=NEON_CYAN, base_color=(0, 70, 110),
+            hotkey_text="[S]", border_radius=14
+        )
+        clk_menu, _, _ = ui_manager.button(
+            screen, "p10_menu", btn_menu, "ABORT TO MENU",
+            is_mobile=is_mobile(), accent=NEON_PINK, base_color=(130, 20, 45),
+            hotkey_text="[M]", border_radius=14
+        )
 
-        if key_down: focused_btn = (focused_btn + 1) % 4
-        if key_up:   focused_btn = (focused_btn - 1) % 4
-
-        is_h_p = is_h_p or focused_btn == 0
-        is_h_r = is_h_r or focused_btn == 1
-        is_h_s = is_h_s or focused_btn == 2
-        is_h_m = is_h_m or focused_btn == 3
-
-        draw_glowing_button(screen, ">  RESUME MISSION", FONT_UI, WHITE, btn_resume, NEON_GREEN, is_h_p, border_radius=14, pulse_t=ui_pulse_t)
-        draw_glowing_button(screen, "@  RESTART LEVEL", FONT_UI, WHITE, btn_restart, NEON_ORANGE, is_h_r, border_radius=14, pulse_t=ui_pulse_t)
-        draw_glowing_button(screen, ">  SETTINGS", FONT_UI, WHITE, btn_settings, NEON_CYAN, is_h_s, border_radius=14, pulse_t=ui_pulse_t)
-        draw_glowing_button(screen, "ESC  ABORT TO MENU", FONT_UI, WHITE, btn_menu, NEON_PINK, is_h_m, border_radius=14, pulse_t=ui_pulse_t)
-
-        if m_c or key_enter or key_escape or key_p:
-            if is_h_p or (key_escape or key_p):
-                tap_snd.play()
-                state = 3
-                click_cooldown = 12
-                m_c = False
-                key_escape = False
-                key_p = False
-            elif is_h_s and (m_c or key_enter):
-                tap_snd.play()
-                settings_from_pause = True
-                state = 9
-                click_cooldown = 12
-                m_c = False
-                key_enter = False
-            elif is_h_r and (m_c or key_enter):
-                tap_snd.play()
-                warning_target = "RESTART"
-                state = 15
-                click_cooldown = 12
-                m_c = False
-                key_enter = False
-            elif is_h_m and (m_c or key_enter):
-                tap_snd.play()
-                warning_target = "MENU"
-                state = 15
-                click_cooldown = 12
-                m_c = False
-                key_enter = False
+        if clk_resume or key_escape or key_p:
+            play_sfx("ui_tap")
+            state = 3
+            ui_manager.notify_state_change(3)
+            key_escape = False
+            key_p = False
+            if control_type == 'MOBILE':
+                touch_hud.touch_engine.reset(player_rect.x, player_rect.y)
+        elif clk_settings or (key_enter and focused_btn == 2):
+            play_sfx("ui_tap")
+            settings_from_pause = True
+            state = 9
+            ui_manager.notify_state_change(9)
+            key_enter = False
+        elif clk_restart or key_r or (key_enter and focused_btn == 1):
+            play_sfx("ui_tap")
+            warning_target = "RESTART"
+            state = 15
+            ui_manager.notify_state_change(15)
+            key_enter = False
+            key_r = False
+        elif clk_menu or (key_enter and focused_btn == 3):
+            play_sfx("ui_tap")
+            warning_target = "MENU"
+            state = 15
+            ui_manager.notify_state_change(15)
+            key_enter = False
 
     # ==========================
     # WARNING SCREEN (STATE 15)
@@ -2754,46 +2853,54 @@ while running:
         overlay.fill((0, 0, 0, 220))
         screen.blit(overlay, (0, 0))
 
-        w_box = pygame.Rect(140, 140, 520, 310)
+        w_box = pygame.Rect(130, 110, 540, 370)
         draw_neon_panel(screen, w_box, accent=RED, alpha=250, border_radius=20, bg=PANEL_BG)
 
-        draw_text_shadow("ABORT MISSION?", FONT_MODAL_TITLE, RED, 400, 185, shadow_color=(80, 0, 0), offset=2)
-        draw_divider(screen, 180, 215, 620, RED, alpha=50)
-        draw_text("If you leave or restart now,", FONT_UI, WHITE, 400, 245)
-        draw_text("all unbanked level coins will be lost!", FONT_SMALL, NEON_GOLD, 400, 280)
+        draw_text_shadow("ABORT MISSION?", FONT_MODAL_TITLE, RED, 400, 150, shadow_color=(80, 0, 0), offset=2)
+        draw_divider(screen, 170, 182, 630, RED, alpha=50)
+        draw_text("If you leave or restart now,", FONT_UI, WHITE, 400, 212)
+        draw_text("all unbanked level coins will be lost!", FONT_SMALL, NEON_GOLD, 400, 242)
 
-        btn_w_back = pygame.Rect(175, 340, 210, 54)
-        btn_ok     = pygame.Rect(415, 340, 210, 54)
+        warn_rect = pygame.Rect(165, 275, 470, 85)
+        pygame.draw.rect(screen, (32, 14, 18), warn_rect, border_radius=12)
+        pygame.draw.rect(screen, RED, warn_rect, width=1, border_radius=12)
+        draw_text("! WARNING: RUN PROGRESS WILL RESET", FONT_TINY, RED, 400, 298)
+        draw_text(f"At Stake: +{level_coins} Coins collected this run", FONT_SMALL, NEON_GOLD, 400, 328)
 
-        mx, my = pygame.mouse.get_pos()
-        m_down = pygame.mouse.get_pressed()[0]
-        is_h_back = btn_w_back.collidepoint(mx, my)
-        is_h_ok   = btn_ok.collidepoint(mx, my)
+        # Clear gap above y=396 guarantees zero overlap with State 10 (which ends at y=362)
+        btn_w_back = pygame.Rect(165, 396, 220, 54)
+        btn_ok     = pygame.Rect(415, 396, 220, 54)
 
-        draw_glowing_button(screen, "RESUME", FONT_UI, WHITE, btn_w_back, NEON_GREEN, is_h_back, border_radius=14, pulse_t=ui_pulse_t)
-        draw_glowing_button(screen, "CONFIRM LEAVE", FONT_UI, WHITE, btn_ok, RED, is_h_ok, border_radius=14, pulse_t=ui_pulse_t)
+        clk_w_back, _, _ = ui_manager.button(
+            screen, "w15_back", btn_w_back, "RESUME",
+            is_mobile=is_mobile(), accent=NEON_GREEN, base_color=(0, 100, 45),
+            hotkey_text="[ESC]", border_radius=14
+        )
+        clk_w_ok, _, _ = ui_manager.button(
+            screen, "w15_ok", btn_ok, "CONFIRM LEAVE",
+            is_mobile=is_mobile(), accent=RED, base_color=(130, 20, 20),
+            hotkey_text="[ENTER]", border_radius=14
+        )
 
-        if m_c or key_escape or key_enter:
-            if is_h_back or key_escape:
-                tap_snd.play()
-                state = 10
-                click_cooldown = 12
-                m_c = False
-                key_escape = False
-            elif is_h_ok or key_enter:
-                tap_snd.play()
-                total_coins -= level_coins
-                level_coins = 0
-                click_cooldown = 12
-                m_c = False
-                key_enter = False
+        if clk_w_back or key_escape:
+            play_sfx("ui_tap")
+            state = 10
+            ui_manager.notify_state_change(10)
+            key_escape = False
+        elif clk_w_ok or key_enter:
+            play_sfx("ui_tap")
+            total_coins -= level_coins
+            level_coins = 0
+            key_enter = False
 
-                if warning_target == "MENU":
-                    save_game()
-                    state = 0
-                elif warning_target == "RESTART":
-                    reset_level_logic(selected_level)
-                    state = 3
+            if warning_target == "MENU":
+                save_game()
+                state = 0
+                ui_manager.notify_state_change(0)
+            elif warning_target == "RESTART":
+                reset_level_logic(selected_level)
+                state = 3
+                ui_manager.notify_state_change(3)
 
     # ==========================
     # WIN / LOSS (STATE 4 & 5)
@@ -2808,64 +2915,68 @@ while running:
 
         # State 5: Dedicated Confirmation Modal for Revive
         if state == 5 and show_revive_confirm:
-            p_box = pygame.Rect(130, 100, 540, 400)
+            p_box = pygame.Rect(130, 75, 540, 435)
             draw_holographic_panel(screen, p_box, accent=NEON_GOLD, alpha=252, border_radius=22,
                                    bg=(25, 20, 30), show_scanlines=True, show_corners=True, pulse_t=ui_pulse_t)
 
-            draw_text_shadow("CONFIRM REVIVE", FONT_MODAL_TITLE, NEON_GOLD, 400, 145, shadow_color=(80, 50, 0), offset=2)
-            draw_text("RESTORE FULL COMBAT POWER", FONT_TINY, NEON_CYAN, 400, 185)
-            draw_divider(screen, 170, 202, 630, NEON_GOLD, alpha=50)
+            draw_text_shadow("CONFIRM REVIVE", FONT_MODAL_TITLE, NEON_GOLD, 400, 115, shadow_color=(80, 50, 0), offset=2)
+            draw_text("RESTORE FULL COMBAT POWER", FONT_TINY, NEON_CYAN, 400, 148)
+            draw_divider(screen, 170, 166, 630, NEON_GOLD, alpha=50)
 
-            feat_card = pygame.Rect(160, 220, 480, 64)
+            feat_card = pygame.Rect(160, 185, 480, 76)
             pygame.draw.rect(screen, (35, 30, 45), feat_card, border_radius=12)
             pygame.draw.rect(screen, (80, 70, 100), feat_card, width=1, border_radius=12)
-            draw_text("* Full Armor Hull + 3s Invulnerability Barrier", FONT_SMALL, WHITE, 400, 242)
+            draw_text("* Full Armor Hull + 3s Invulnerability Barrier", FONT_SMALL, WHITE, 400, 208)
+            draw_text("* Clears All Hostile Bullets & Minions on Field", FONT_TINY, NEON_CYAN, 400, 236)
             
             c_price = get_revive_price(current_level, revives_done_this_level)
             can_afford = total_coins >= c_price
             cost_color = NEON_GREEN if can_afford else RED
-            draw_text(f"Price: $ {c_price} Coins  |  Bank: {total_coins} Coins", FONT_SMALL, cost_color, 400, 310)
+            draw_text(f"Price: $ {c_price} Coins  |  Bank: {total_coins} Coins", FONT_SMALL, cost_color, 400, 288)
 
-            b_back = pygame.Rect(165, 380, 220, 54)
-            b_buy = pygame.Rect(415, 380, 220, 54)
+            # Sits at y=430..484: Zero overlap with underlying Game Over menu button (y=362..410)
+            b_back = pygame.Rect(165, 430, 220, 54)
+            b_buy  = pygame.Rect(415, 430, 220, 54)
 
-            is_h_rbk = b_back.collidepoint(mx, my)
-            is_h_rbuy = b_buy.collidepoint(mx, my)
+            rev_cancel_clk, _, _ = ui_manager.button(
+                screen, "rev_cancel", b_back, "CANCEL",
+                is_mobile=is_mobile(), accent=NEON_PINK, base_color=(130, 20, 45),
+                hotkey_text="[ESC]", border_radius=14
+            )
+            rev_buy_clk, _, _ = ui_manager.button(
+                screen, "rev_buy", b_buy, f"REVIVE ({c_price})",
+                is_mobile=is_mobile(), accent=NEON_GREEN if can_afford else MID_GRAY,
+                base_color=(0, 120, 50) if can_afford else (40, 40, 50),
+                hotkey_text="[ENTER]", border_radius=14
+            )
 
-            draw_plasma_button(screen, "CANCEL", FONT_UI, WHITE, b_back, (140, 20, 50), is_h_rbk,
-                               border_radius=14, accent=NEON_PINK, pulse_t=0)
-            draw_plasma_button(screen, f"REVIVE ({c_price})", FONT_UI, WHITE, b_buy,
-                               (0, 150, 60) if can_afford else (50, 50, 60), is_h_rbuy,
-                               border_radius=14, accent=NEON_GREEN if can_afford else MID_GRAY, pulse_t=ui_pulse_t)
+            if rev_cancel_clk or key_escape:
+                play_sfx("ui_back")
+                show_revive_confirm = False
+                ui_manager.notify_modal_change()
+                key_escape = False
+            elif rev_buy_clk and can_afford:
+                total_coins -= c_price
+                revives_done_this_level += 1
+                player_health = unlocked_hp
+                revive_protection_timer = 180
+                bullets.clear()
+                fighters.clear()
+                elites.clear()
+                heavies.clear()
+                phantoms.clear()
+                berserkers.clear()
+                commanders.clear()
+                enemy_bullets.clear()
 
-            if m_c:
-                if is_h_rbk:
-                    tap_snd.play()
-                    show_revive_confirm = False
-                    click_cooldown = 12
-                    m_c = False
-                elif is_h_rbuy and can_afford:
-                    total_coins -= c_price
-                    revives_done_this_level += 1
-                    player_health = unlocked_hp
-                    revive_protection_timer = 180
-                    bullets.clear()
-                    fighters.clear()
-                    elites.clear()
-                    heavies.clear()
-                    phantoms.clear()
-                    berserkers.clear()
-                    commanders.clear()
-                    enemy_bullets.clear()
+                for _ in range(60):
+                    particles.append([player_rect.centerx, player_rect.centery, random.uniform(-10, 10), random.uniform(-10, 10), random.randint(6, 12), CYAN])
 
-                    for _ in range(60):
-                        particles.append([player_rect.centerx, player_rect.centery, random.uniform(-10, 10), random.uniform(-10, 10), random.randint(6, 12), CYAN])
-
-                    tap_snd.play()
-                    state = 3
-                    show_revive_confirm = False
-                    click_cooldown = 12
-                    m_c = False
+                play_sfx("ui_buy")
+                state = 3
+                show_revive_confirm = False
+                ui_manager.notify_modal_change()
+                ui_manager.notify_state_change(3)
 
         # Regular Victory Screen (State 4)
         elif state == 4:
@@ -2892,34 +3003,35 @@ while running:
             b_m = pygame.Rect(165, 350, 220, 56)
             b_n = pygame.Rect(415, 350, 220, 56)
 
-            is_h_m = b_m.collidepoint(mx, my)
-            is_h_n = b_n.collidepoint(mx, my)
+            vic_menu_clk, _, _ = ui_manager.button(
+                screen, "v4_menu", b_m, "< MAIN MENU",
+                is_mobile=is_mobile(), accent=NEON_BLUE, base_color=(0, 60, 130),
+                hotkey_text="[ESC]", border_radius=16
+            )
+            vic_next_clk, _, _ = ui_manager.button(
+                screen, "v4_next", b_n, "NEXT LEVEL >",
+                is_mobile=is_mobile(), accent=NEON_GREEN, base_color=(0, 130, 50),
+                hotkey_text="[ENTER]", border_radius=16
+            )
 
-            draw_plasma_button(screen, "< MAIN MENU", FONT_UI, WHITE, b_m, (0, 70, 160), is_h_m,
-                               border_radius=16, accent=NEON_BLUE, pulse_t=ui_pulse_t)
-            draw_plasma_button(screen, "NEXT LEVEL >", FONT_UI, WHITE, b_n, (0, 150, 60), is_h_n,
-                               border_radius=16, accent=NEON_GREEN, pulse_t=ui_pulse_t)
-
-            if m_c or key_enter or key_escape or key_left:
-                if is_h_m or key_escape or key_left:
-                    tap_snd.play()
+            if vic_menu_clk or key_escape or key_left:
+                play_sfx("ui_tap")
+                level_coins = 0
+                save_game()
+                state = 0
+                ui_manager.notify_state_change(0)
+                key_escape = False
+                key_left = False
+            elif vic_next_clk or key_enter or key_right:
+                if current_level < 40:
                     level_coins = 0
-                    save_game()
-                    state = 0
-                    click_cooldown = 12
-                    m_c = False
-                    key_escape = False
-                    key_left = False
-                elif is_h_n or key_enter:
-                    if current_level < 40:
-                        level_coins = 0
-                        selected_level = current_level + 1
-                        reset_level_logic(selected_level)
-                        tap_snd.play()
-                        state = 3
-                        click_cooldown = 12
-                        m_c = False
-                        key_enter = False
+                    selected_level = current_level + 1
+                    reset_level_logic(selected_level)
+                    play_sfx("ui_tap")
+                    state = 3
+                    ui_manager.notify_state_change(3)
+                    key_enter = False
+                    key_right = False
 
         # Regular Game Over Screen (State 5)
         elif state == 5:
@@ -2936,57 +3048,48 @@ while running:
             pygame.draw.rect(screen, NEON_PINK, stats_box, width=1, border_radius=12)
             draw_text(f"$ Coins: +{level_coins}  |  VS Enemies Down: {kill_count}", FONT_SMALL, NEON_GOLD, 400, 209)
 
-            rev_b = pygame.Rect(180, 255, 440, 58)
-            b_n   = pygame.Rect(180, 325, 440, 50)
-            b_m   = pygame.Rect(180, 385, 440, 50)
+            # Sits at y=248..408: Zero overlap with Revive Confirm modal buttons (y=430..484)
+            rev_b = pygame.Rect(180, 248, 440, 48)
+            b_n   = pygame.Rect(180, 304, 440, 48)
+            b_m   = pygame.Rect(180, 360, 440, 48)
 
-            is_h_rev = rev_b.collidepoint(mx, my)
-            is_h_n   = b_n.collidepoint(mx, my)
-            is_h_m   = b_m.collidepoint(mx, my)
+            fail_rev_clk, _, _ = ui_manager.button(
+                screen, "go_revive", rev_b, "*  REVIVE STARSHIP",
+                is_mobile=is_mobile(), accent=NEON_GOLD, base_color=(120, 80, 0),
+                hotkey_text="[1]", border_radius=16
+            )
+            fail_retry_clk, _, _ = ui_manager.button(
+                screen, "go_retry", b_n, "@  RETRY MISSION",
+                is_mobile=is_mobile(), accent=NEON_ORANGE, base_color=(120, 50, 0),
+                hotkey_text="[R] / [ENTER]", border_radius=14
+            )
+            fail_menu_clk, _, _ = ui_manager.button(
+                screen, "go_menu", b_m, "< MAIN MENU",
+                is_mobile=is_mobile(), accent=NEON_BLUE, base_color=(0, 60, 130),
+                hotkey_text="[ESC]", border_radius=14
+            )
 
-            if is_h_rev: focused_btn = 0
-            if is_h_n: focused_btn = 1
-            if is_h_m: focused_btn = 2
-            
-            if key_down: focused_btn = (focused_btn + 1) % 3
-            if key_up: focused_btn = (focused_btn - 1) % 3
-            
-            is_h_rev = is_h_rev or focused_btn == 0
-            is_h_n = is_h_n or focused_btn == 1
-            is_h_m = is_h_m or focused_btn == 2
-
-            draw_plasma_button(screen, "*  REVIVE STARSHIP", FONT_UI, WHITE, rev_b, (140, 100, 0), is_h_rev,
-                               border_radius=16, accent=NEON_GOLD, pulse_t=ui_pulse_t)
-            draw_plasma_button(screen, "@  RETRY MISSION", FONT_UI, WHITE, b_n, (140, 60, 0), is_h_n,
-                               border_radius=14, accent=NEON_ORANGE, pulse_t=ui_pulse_t)
-            draw_plasma_button(screen, "< MAIN MENU", FONT_UI, WHITE, b_m, (0, 70, 150), is_h_m,
-                               border_radius=14, accent=NEON_BLUE, pulse_t=ui_pulse_t)
-
-            if m_c or key_enter or key_escape or key_r:
-                if is_h_rev and (m_c or (key_enter and focused_btn == 0)):
-                    tap_snd.play()
-                    show_revive_confirm = True
-                    click_cooldown = 12
-                    m_c = False
-                    key_enter = False
-                elif (is_h_n and (m_c or (key_enter and focused_btn == 1))) or key_r:
-                    level_coins = 0
-                    reset_level_logic(selected_level)
-                    tap_snd.play()
-                    state = 3
-                    click_cooldown = 12
-                    m_c = False
-                    key_enter = False
-                    key_r = False
-                elif (is_h_m and (m_c or (key_enter and focused_btn == 2))) or key_escape:
-                    tap_snd.play()
-                    level_coins = 0
-                    save_game()
-                    state = 0
-                    click_cooldown = 12
-                    m_c = False
-                    key_enter = False
-                    key_escape = False
+            if fail_rev_clk or (key_enter and focused_btn == 0):
+                play_sfx("ui_tap")
+                show_revive_confirm = True
+                ui_manager.notify_modal_change()
+                key_enter = False
+            elif fail_retry_clk or key_r or (key_enter and focused_btn == 1):
+                level_coins = 0
+                reset_level_logic(selected_level)
+                play_sfx("ui_tap")
+                state = 3
+                ui_manager.notify_state_change(3)
+                key_enter = False
+                key_r = False
+            elif fail_menu_clk or key_escape or (key_enter and focused_btn == 2):
+                play_sfx("ui_tap")
+                level_coins = 0
+                save_game()
+                state = 0
+                ui_manager.notify_state_change(0)
+                key_enter = False
+                key_escape = False
 
     # Apply Global Screen Shake
     if screen_shake_enabled and visual_quality == 'high' and global_shake_intensity > 0.5:
@@ -3007,13 +3110,21 @@ while running:
         fps_val = int(clock.get_fps())
         fps_color = NEON_GREEN if fps_val >= 50 else NEON_GOLD if fps_val >= 30 else RED
         fps_text = FONT_TINY.render(f"FPS: {fps_val}", True, fps_color)
-        fps_bg = pygame.Rect(WIDTH - 78, 4, 74, 22)
+        if state == 3:
+            # Positioned under top-left coin pill: zero collision with Boss HP bar, kill ring, or pause button
+            fps_bg = pygame.Rect(14, 56, 76, 22)
+        else:
+            fps_bg = pygame.Rect(WIDTH - 78, 4, 74, 22)
         pygame.draw.rect(screen, (10, 12, 20, 200), fps_bg, border_radius=6)
         pygame.draw.rect(screen, fps_color, fps_bg, width=1, border_radius=6)
         screen.blit(fps_text, fps_text.get_rect(center=fps_bg.center))
 
     if state != prev_state:
         ignore_mouse_until_released = True
+        ui_manager.notify_state_change(state)
         
     pygame.display.flip()
-    clock.tick(60)
+    if _smoke_max_frames > 0:
+        clock.tick(0)
+    else:
+        clock.tick(60)

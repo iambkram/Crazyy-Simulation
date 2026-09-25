@@ -15,9 +15,9 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 try:
-    from src.platform_config import configure_pc
-except ImportError:
     from platform_config import configure_pc
+except ImportError:
+    from src.platform_config import configure_pc
 
 configure_pc()
 

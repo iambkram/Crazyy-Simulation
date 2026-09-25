@@ -1,6 +1,9 @@
 """Keep a logical 800x600 playfield and scale it to any phone aspect (16:9, 19.5:9, 20:9)."""
 import pygame
-from settings import WIDTH, HEIGHT
+try:
+    from settings import WIDTH, HEIGHT
+except ImportError:
+    from src.settings import WIDTH, HEIGHT
 
 
 import os
